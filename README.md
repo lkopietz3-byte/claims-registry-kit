@@ -38,16 +38,9 @@ cheap checks become possible that weren't possible before: "does this claim
 even have a linked reference" and "how long has it been since anyone
 checked it." Neither check requires understanding what the claim means.
 
-**This is the same idea SOC2/compliance tools like Vanta or Drata use for
-mapping controls to evidence** — a compliance control ("we encrypt data at
-rest") is stored next to a pointer to the artifact that proves it, with a
-last-checked date, so an auditor can see at a glance what's covered and
-what's gone stale. This library applies that exact structure to ordinary
-product and marketing claims instead of compliance controls. That's a fair
-comparison, not a stretch — the data shape and the staleness discipline are
-genuinely the same pattern; this library just doesn't do compliance-grade
-things like audit trails, control frameworks, or attestation workflows. See
-**Honest limits** below for the rest of what it doesn't do.
+The result is a short review queue: which claims need evidence, which need
+another look, and which meet the supplied review-date policy. A person still
+needs to decide whether the evidence supports the words being published.
 
 ## Use it in a project
 
@@ -56,6 +49,8 @@ npm install github:lkopietz3-byte/claims-registry-kit
 ```
 
 Zero runtime dependencies. ESM only (`"type": "module"`).
+Git installation builds the package through its `prepare` script. Use a
+reviewed commit reference when you need a repeatable dependency.
 
 ## Example: a toy SaaS product
 
