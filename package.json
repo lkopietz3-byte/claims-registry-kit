@@ -1,9 +1,17 @@
 {
   "name": "claims-registry-kit",
   "version": "0.1.0",
-  "description": "Keep public-facing product claims honest over time by tying each one to an evidence reference and a last-verified date, the SOC2-control-evidence pattern applied to marketing copy instead of compliance controls. Zero runtime dependencies, framework-agnostic TypeScript.",
+  "description": "A dependency-free TypeScript library for tracking public claims, their evidence references, and their review freshness.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lkopietz3-byte/claims-registry-kit.git"
+  },
+  "homepage": "https://github.com/lkopietz3-byte/claims-registry-kit#readme",
+  "bugs": {
+    "url": "https://github.com/lkopietz3-byte/claims-registry-kit/issues"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,6 +28,7 @@
   ],
   "sideEffects": false,
   "scripts": {
+    "prepare": "npm run build",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

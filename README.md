@@ -1,9 +1,23 @@
-# claims-registry-kit
+# Claims Registry Kit
 
-A tiny, zero-dependency library that keeps public-facing product claims
-honest over time by tying each one to an evidence reference and a
-last-verified date — so a claim can't quietly drift away from what the
-codebase actually does without something noticing.
+Claims Registry Kit is a small, dependency-free TypeScript library for
+tracking public-facing claims alongside an evidence reference and a
+last-verified date. It catches the structural problems that let product copy
+quietly drift: claims with no linked evidence and claims whose review is
+overdue.
+
+## Start here
+
+```bash
+npm ci
+npm test
+npm run typecheck
+npm run build
+```
+
+The package is source-available under the MIT license and is not published to
+npm. The [test suite](test/claims.test.ts) is the shortest path through every
+status and edge case.
 
 ## The idea, plainly
 
@@ -35,16 +49,13 @@ genuinely the same pattern; this library just doesn't do compliance-grade
 things like audit trails, control frameworks, or attestation workflows. See
 **Honest limits** below for the rest of what it doesn't do.
 
-## Install
+## Use it in a project
 
 ```bash
-npm install
-npm test           # vitest
-npm run typecheck  # tsc --noEmit
-npm run build       # emits dist/ (ESM + .d.ts)
+npm install github:lkopietz3-byte/claims-registry-kit
 ```
 
-Zero runtime dependencies. ESM only (`"type": "module"`). MIT licensed.
+Zero runtime dependencies. ESM only (`"type": "module"`).
 
 ## Example: a toy SaaS product
 
