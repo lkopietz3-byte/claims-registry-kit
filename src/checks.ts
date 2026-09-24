@@ -1,4 +1,5 @@
 import type { Claim, ClaimStatus, EvaluatedClaim } from './types.js';
+import { assertClaimList, assertClaimObject, assertMaxAgeDays, assertNow } from './validate.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -37,6 +38,18 @@ export function evaluateClaim<EvidenceRef = string>(
   maxAgeDays: number,
   now: Date = new Date(),
 ): EvaluatedClaim<EvidenceRef> {
+  assertClaimObject(claim, 'claim');
+  assertMaxAgeDays(maxAgeDays);
+  assertNow(now);
+  return evaluate(claim, maxAgeDays, now);
+}
+
+/** The single place a status is decided. Callers have already validated their arguments. */
+function evaluate<EvidenceRef>(
+  claim: Claim<EvidenceRef>,
+  maxAgeDays: number,
+  now: Date,
+): EvaluatedClaim<EvidenceRef> {
   const ageDays = computeAgeDays(claim.verifiedAt, now);
 
   let status: ClaimStatus;
@@ -62,12 +75,15 @@ export function evaluateClaim<EvidenceRef = string>(
  * claim gets exactly one bucket via `evaluateClaim`, never two.
  */
 export function checkStaleness<EvidenceRef = string>(
-  claims: Claim<EvidenceRef>[],
+  claims: readonly Claim<EvidenceRef>[],
   maxAgeDays: number,
   now: Date = new Date(),
 ): EvaluatedClaim<EvidenceRef>[] {
+  assertClaimList(claims);
+  assertMaxAgeDays(maxAgeDays);
+  assertNow(now);
   return claims
-    .map((claim) => evaluateClaim(claim, maxAgeDays, now))
+    .map((claim) => evaluate(claim, maxAgeDays, now))
     .filter((evaluated) => evaluated.status === 'stale');
 }
 
@@ -88,16 +104,16 @@ export function checkStaleness<EvidenceRef = string>(
  * glance), but it plays no role in the `'unverified'` classification here.
  */
 export function checkEvidenceLinked<EvidenceRef = string>(
-  claims: Claim<EvidenceRef>[],
+  claims: readonly Claim<EvidenceRef>[],
   now: Date = new Date(),
 ): EvaluatedClaim<EvidenceRef>[] {
+  assertClaimList(claims);
+  assertNow(now);
+  // The policy is irrelevant here (evidence presence outranks age), so an
+  // unlimited one keeps this on the same code path as every other entry point.
   return claims
-    .filter((claim) => !hasEvidence(claim.evidenceRef))
-    .map((claim) => ({
-      ...claim,
-      status: 'unverified' as const,
-      ageDays: computeAgeDays(claim.verifiedAt, now),
-    }));
+    .map((claim) => evaluate(claim, Number.POSITIVE_INFINITY, now))
+    .filter((evaluated) => evaluated.status === 'unverified');
 }
 
 /** Summary produced by `generateClaimsReport`. */
@@ -128,11 +144,14 @@ export interface ClaimsReport<EvidenceRef = string> {
  * the claims and `now` you hand it, once, when you call it.
  */
 export function generateClaimsReport<EvidenceRef = string>(
-  claims: Claim<EvidenceRef>[],
+  claims: readonly Claim<EvidenceRef>[],
   maxAgeDays: number,
   now: Date = new Date(),
 ): ClaimsReport<EvidenceRef> {
-  const evaluated = claims.map((claim) => evaluateClaim(claim, maxAgeDays, now));
+  assertClaimList(claims);
+  assertMaxAgeDays(maxAgeDays);
+  assertNow(now);
+  const evaluated = claims.map((claim) => evaluate(claim, maxAgeDays, now));
 
   const current = evaluated.filter((c) => c.status === 'current');
   const stale = evaluated.filter((c) => c.status === 'stale');
