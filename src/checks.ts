@@ -4,10 +4,29 @@ import { assertClaimList, assertClaimObject, assertMaxAgeDays, assertNow } from 
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-function computeAgeDays(verifiedAt: unknown, now: Date): number | null {
+/**
+ * How far past `now` a `verifiedAt` may be before it stops looking like clock
+ * skew (or a date-only value written in a zone ahead of UTC, at most 14 hours)
+ * and starts looking like a typo.
+ */
+const FUTURE_TOLERANCE_MS = MS_PER_DAY;
+
+interface Age {
+  /** Whole elapsed 24-hour periods; `null` when `verifiedAt` is unparseable. */
+  ageDays: number | null;
+  /** False when `verifiedAt` is unparseable or too far in the future to count as a verification. */
+  usable: boolean;
+}
+
+function computeAge(verifiedAt: unknown, now: Date): Age {
   const verifiedMs = parseIsoInstant(verifiedAt);
-  if (verifiedMs === null) return null;
-  return Math.floor((now.getTime() - verifiedMs) / MS_PER_DAY);
+  if (verifiedMs === null) return { ageDays: null, usable: false };
+  const elapsedMs = now.getTime() - verifiedMs;
+  if (elapsedMs < -FUTURE_TOLERANCE_MS) {
+    return { ageDays: Math.floor(elapsedMs / MS_PER_DAY), usable: false };
+  }
+  // Within tolerance a slightly-future date reads as "just now", never as -1.
+  return { ageDays: Math.max(0, Math.floor(elapsedMs / MS_PER_DAY)), usable: true };
 }
 
 /**
@@ -51,12 +70,12 @@ function evaluate<EvidenceRef>(
   maxAgeDays: number,
   now: Date,
 ): EvaluatedClaim<EvidenceRef> {
-  const ageDays = computeAgeDays(claim.verifiedAt, now);
+  const { ageDays, usable } = computeAge(claim.verifiedAt, now);
 
   let status: ClaimStatus;
   if (!hasEvidence(claim.evidenceRef)) {
     status = 'unverified';
-  } else if (ageDays === null || ageDays > maxAgeDays) {
+  } else if (!usable || ageDays === null || ageDays > maxAgeDays) {
     status = 'stale';
   } else {
     status = 'current';
@@ -194,7 +213,10 @@ export function formatClaimsReportAsText<EvidenceRef = string>(
     lines.push('');
     lines.push('Stale claims (evidence linked, but review is overdue):');
     for (const claim of report.stale) {
-      const age = claim.ageDays === null ? 'unparseable verifiedAt' : `${claim.ageDays}d old`;
+      let age: string;
+      if (claim.ageDays === null) age = 'unparseable verifiedAt';
+      else if (claim.ageDays < 0) age = 'verifiedAt is in the future';
+      else age = `${claim.ageDays}d old`;
       lines.push(`  [${claim.id}] "${claim.text}" — ${age}`);
     }
   }
