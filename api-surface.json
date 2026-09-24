@@ -1,0 +1,10 @@
+{
+  "claims-registry-kit": [
+    "checkEvidenceLinked",
+    "checkStaleness",
+    "createClaimsRegistry",
+    "evaluateClaim",
+    "formatClaimsReportAsText",
+    "generateClaimsReport"
+  ]
+}
