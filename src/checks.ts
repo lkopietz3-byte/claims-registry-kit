@@ -1,12 +1,13 @@
+import { parseIsoInstant } from './dates.js';
 import type { Claim, ClaimStatus, EvaluatedClaim } from './types.js';
 import { assertClaimList, assertClaimObject, assertMaxAgeDays, assertNow } from './validate.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-function computeAgeDays(verifiedAt: string, now: Date): number | null {
-  const verifiedDate = new Date(verifiedAt);
-  if (Number.isNaN(verifiedDate.getTime())) return null;
-  return Math.floor((now.getTime() - verifiedDate.getTime()) / MS_PER_DAY);
+function computeAgeDays(verifiedAt: unknown, now: Date): number | null {
+  const verifiedMs = parseIsoInstant(verifiedAt);
+  if (verifiedMs === null) return null;
+  return Math.floor((now.getTime() - verifiedMs) / MS_PER_DAY);
 }
 
 /**
