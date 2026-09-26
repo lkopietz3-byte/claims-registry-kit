@@ -88,6 +88,18 @@ function hasEvidence(evidenceRef: unknown): boolean {
  * you call. Priority order: missing evidence always wins as `'unverified'`,
  * even for a claim `verifiedAt` an hour ago — see `ClaimStatus` in
  * `types.ts` for why.
+ *
+ * `verifiedAt` is parsed as strict ISO 8601 in UTC (a bare date or an
+ * offset-free timestamp is never read as local time), so the result does
+ * not depend on the machine's time zone. A `verifiedAt` more than a day
+ * ahead of `now` is treated as a typo and reported `'stale'`, not
+ * `'current'`, so a wrong future date can't hide a claim from review.
+ *
+ * @throws {TypeError} if `claim` is not an object, `maxAgeDays` is not a
+ * number, or `now` is not a `Date`.
+ * @throws {RangeError} if `maxAgeDays` is negative or non-finite, or `now`
+ * is an Invalid Date. A bad policy or clock must fail loudly here rather
+ * than silently marking every claim `'current'`.
  */
 export function evaluateClaim<EvidenceRef = string>(
   claim: Claim<EvidenceRef>,
@@ -122,13 +134,18 @@ function evaluate<EvidenceRef>(
 
 /**
  * Which claims have gone stale: `evidenceRef` is present, but `verifiedAt`
- * is older than `maxAgeDays` (or unparseable as a date, treated
- * conservatively as stale so a malformed date can't hide a claim from
- * review).
+ * is older than `maxAgeDays`, more than a day in the future, or unparseable
+ * — see `evaluateClaim` for exactly how each is decided.
  *
  * Claims with a missing `evidenceRef` are never included here, even if
  * their `verifiedAt` is ancient — that's `checkEvidenceLinked`'s job. Each
- * claim gets exactly one bucket via `evaluateClaim`, never two.
+ * claim gets exactly one bucket via `evaluateClaim`, never two. Results are
+ * in the same order as `claims`.
+ *
+ * @throws {TypeError} if `claims` is not an array (or contains a non-object
+ * entry), `maxAgeDays` is not a number, or `now` is not a `Date`.
+ * @throws {RangeError} if `maxAgeDays` is negative or non-finite, or `now`
+ * is an Invalid Date.
  */
 export function checkStaleness<EvidenceRef = string>(
   claims: readonly Claim<EvidenceRef>[],
@@ -144,7 +161,7 @@ export function checkStaleness<EvidenceRef = string>(
 }
 
 /**
- * Purely structural: does every claim have a non-empty `evidenceRef`?
+ * Purely structural: which claims are missing an `evidenceRef`?
  *
  * This is the boundary this library draws on purpose. It answers "is there
  * a reference here at all" — never "does the thing at that reference still
@@ -155,9 +172,20 @@ export function checkStaleness<EvidenceRef = string>(
  * reimplement. Pair it with a grounding/citation-verification tool for
  * that — see the README's limits section.
  *
+ * A string `evidenceRef` counts as present once whitespace and invisible
+ * formatting characters are stripped; an array counts as present if any of
+ * its elements do, checked recursively. See `Claim`'s doc comment for why
+ * any other value (an object, for a caller-defined evidence type) always
+ * counts as present.
+ *
  * `ageDays` is still computed on the returned claims for convenience (a
  * claim missing evidence AND overdue for review is worth knowing at a
  * glance), but it plays no role in the `'unverified'` classification here.
+ * Results are in the same order as `claims`.
+ *
+ * @throws {TypeError} if `claims` is not an array (or contains a non-object
+ * entry) or `now` is not a `Date`.
+ * @throws {RangeError} if `now` is an Invalid Date.
  */
 export function checkEvidenceLinked<EvidenceRef = string>(
   claims: readonly Claim<EvidenceRef>[],
@@ -198,6 +226,14 @@ export interface ClaimsReport<EvidenceRef = string> {
  * and decides what to fix — not for a live/always-on cron. Nothing in this
  * library schedules itself or watches anything; it computes an answer for
  * the claims and `now` you hand it, once, when you call it.
+ *
+ * `current`, `stale`, and `unverified` each preserve the order claims
+ * appear in the input array.
+ *
+ * @throws {TypeError} if `claims` is not an array (or contains a non-object
+ * entry), `maxAgeDays` is not a number, or `now` is not a `Date`.
+ * @throws {RangeError} if `maxAgeDays` is negative or non-finite, or `now`
+ * is an Invalid Date.
  */
 export function generateClaimsReport<EvidenceRef = string>(
   claims: readonly Claim<EvidenceRef>[],

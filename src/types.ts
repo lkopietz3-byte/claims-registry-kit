@@ -13,7 +13,14 @@
 // comparison this is modeled on, and for what this library deliberately
 // does NOT check.
 
-/** ISO 8601 date string, e.g. '2026-07-28' or a full timestamp. */
+/**
+ * ISO 8601 date string, e.g. `'2026-07-28'` or a full timestamp such as
+ * `'2026-07-28T14:30:00Z'`. A timestamp with no UTC offset is read as UTC,
+ * never as the machine's local time zone. Values this library cannot parse
+ * as one of these forms (a month name, a slash-separated date, an
+ * impossible calendar day) are treated as missing, not guessed at — see
+ * `ClaimStatus`.
+ */
 export type IsoDateString = string;
 
 /**
@@ -54,10 +61,12 @@ export interface Claim<EvidenceRef = string> {
  *   how recent `verifiedAt` is. A fresh date next to an empty reference
  *   isn't evidence of anything.
  * - `'stale'` — `evidenceRef` is present, but `verifiedAt` is older than
- *   the caller's `maxAgeDays` policy (or `verifiedAt` doesn't parse as a
- *   date at all, which is treated conservatively as stale).
+ *   the caller's `maxAgeDays` policy, more than a day in the future (a
+ *   likely typo — see `evaluateClaim`), or doesn't parse as a date at all.
+ *   All three are treated conservatively as stale so a bad date can't hide
+ *   a claim from review.
  * - `'current'` — `evidenceRef` is present and `verifiedAt` is within
- *   policy.
+ *   policy (including up to a day in the future, read as clock skew).
  */
 export type ClaimStatus = 'current' | 'stale' | 'unverified';
 
@@ -65,8 +74,11 @@ export type ClaimStatus = 'current' | 'stale' | 'unverified';
 export interface EvaluatedClaim<EvidenceRef = string> extends Claim<EvidenceRef> {
   status: ClaimStatus;
   /**
-   * Whole days between `verifiedAt` and the evaluation's `now`. `null` when
-   * `verifiedAt` fails to parse as a date.
+   * Whole elapsed 24-hour periods between `verifiedAt` and the evaluation's
+   * `now`. `null` when `verifiedAt` fails to parse as a date. Negative when
+   * `verifiedAt` is far enough in the future to be treated as a typo rather
+   * than clock skew (see `evaluateClaim`) — the status is `'stale'` in that
+   * case, never `'current'`.
    */
   ageDays: number | null;
 }
