@@ -46,4 +46,21 @@ export default defineConfig(
       globals: globals.nodeBuiltin,
     },
   },
+  {
+    // scripts/consumer-probe.mts imports 'claims-registry-kit' by its
+    // published package name, which only resolves inside the temporary
+    // consumer project verify-package.mjs builds — never in this repo's own
+    // tsconfig. So it's deliberately outside the `kit/typescript` project
+    // and linted syntax-only here; its actual type-checking (strict,
+    // NodeNext) happens in verify-package.mjs against the installed .d.ts.
+    name: 'kit/type-probe-script',
+    files: ['scripts/**/*.mts'],
+    extends: [tseslint.configs.recommended],
+    languageOptions: {
+      parser: tseslint.parser,
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: globals.nodeBuiltin,
+    },
+  },
 );
