@@ -15,6 +15,12 @@ import type { Claim } from './types.js';
  * array to run checks against — e.g. mirroring the source pattern this
  * library was extracted from, where each feature's config module owned its
  * own claims.
+ *
+ * `registerClaim`, `getClaims`, and `getClaim` all shallow-copy the claim
+ * object, so mutating the object you passed in (or one you got back out)
+ * afterward never changes what the registry holds. That copy is shallow: if
+ * `evidenceRef` (or another field) is itself an array or object, the
+ * registry and the caller still share that inner value.
  */
 export interface ClaimsRegistry<EvidenceRef = string> {
   /**
@@ -41,13 +47,19 @@ export function createClaimsRegistry<EvidenceRef = string>(): ClaimsRegistry<Evi
           `claims-registry-kit: a claim with id "${claim.id}" is already registered`,
         );
       }
-      claims.set(claim.id, claim);
+      // Store a shallow copy: the caller mutating their original object after
+      // registering it (including its `id`) must not reach the stored claim,
+      // or the duplicate-id check above becomes unenforceable after the fact.
+      claims.set(claim.id, { ...claim });
     },
     getClaims() {
-      return Array.from(claims.values());
+      // Shallow-copy on the way out too, so mutating a returned claim can't
+      // reach back into the registry's own state.
+      return Array.from(claims.values(), (claim) => ({ ...claim }));
     },
     getClaim(id) {
-      return claims.get(id);
+      const claim = claims.get(id);
+      return claim === undefined ? undefined : { ...claim };
     },
     clear() {
       claims.clear();
