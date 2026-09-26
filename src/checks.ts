@@ -33,8 +33,8 @@ function computeAge(verifiedAt: unknown, now: Date): Age {
 // blank string: zero-width space/joiners, word joiner, soft hyphen, bidi
 // controls, and C0/DEL. JS's built-in `\s` already covers ordinary
 // whitespace, NBSP, and the BOM, so those don't need to be listed here.
-// eslint-disable-next-line no-control-regex, no-irregular-whitespace -- matching control/format characters is the point
-const INVISIBLE_CHARS = /[\u0000-\u001f\u007f­​-‏‪-‮⁠-⁤]/gu;
+// eslint-disable-next-line no-control-regex -- matching control characters (\u0000-\u001f, \u007f) is the point
+const INVISIBLE_CHARS = /[\u0000-\u001f\u007f\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064]/gu;
 
 function isBlankString(value: string): boolean {
   return value.replace(INVISIBLE_CHARS, '').trim().length === 0;
