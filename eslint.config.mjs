@@ -7,8 +7,17 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   {
-    name: 'kit/linter-controls',
+    // A config object with ONLY `ignores` (plus `name`) is what ESLint's flat
+    // config treats as a GLOBAL ignore. Combining `ignores` with any other
+    // key (as this used to do with `linterOptions`) turns it into a
+    // per-config `files` restriction instead, so dist/ was still being
+    // linted with zero rules enabled — enough for a stray comment in
+    // compiled output to trip `reportUnusedDisableDirectives` below.
+    name: 'kit/ignore-build-output',
     ignores: ['dist/**', 'coverage/**'],
+  },
+  {
+    name: 'kit/linter-controls',
     linterOptions: { reportUnusedDisableDirectives: 'error' },
   },
   {
