@@ -29,18 +29,54 @@ function computeAge(verifiedAt: unknown, now: Date): Age {
   return { ageDays: Math.max(0, Math.floor(elapsedMs / MS_PER_DAY)), usable: true };
 }
 
+// Invisible-but-not-whitespace characters that a reader would still see as a
+// blank string: zero-width space/joiners, word joiner, soft hyphen, bidi
+// controls, and C0/DEL. JS's built-in `\s` already covers ordinary
+// whitespace, NBSP, and the BOM, so those don't need to be listed here.
+// eslint-disable-next-line no-control-regex, no-irregular-whitespace -- matching control/format characters is the point
+const INVISIBLE_CHARS = /[\u0000-\u001f\u007f­​-‏‪-‮⁠-⁤]/gu;
+
+function isBlankString(value: string): boolean {
+  return value.replace(INVISIBLE_CHARS, '').trim().length === 0;
+}
+
 /**
- * Purely structural presence check — does this evidenceRef contain
- * anything at all? A string is "present" if it has non-whitespace content;
- * an array is "present" if it's non-empty; any other non-nullish value
- * (a caller-defined evidence object, for example) is treated as present,
- * since this library doesn't know its shape.
+ * Purely structural presence check — does this evidenceRef contain anything
+ * at all?
+ *
+ * - A string is "present" if, once whitespace and invisible formatting
+ *   characters (zero-width spaces, bidi marks, control characters, ...) are
+ *   stripped, anything is left. `'TODO'` and `'n/a'` count as present —
+ *   this function cannot tell a placeholder from a real reference, only
+ *   whether one was typed.
+ * - An array is "present" if at least one of its elements is, checked
+ *   recursively (a list of evidence refs, or a list of lists). Repeated or
+ *   cyclic sub-arrays are each visited only once, so this always terminates
+ *   and never grows the call stack with input depth.
+ * - Any other non-nullish value (a caller-defined evidence object, for
+ *   example) is treated as present, since this library doesn't know its
+ *   shape — see `Claim`'s doc comment.
  */
 function hasEvidence(evidenceRef: unknown): boolean {
   if (evidenceRef == null) return false;
-  if (typeof evidenceRef === 'string') return evidenceRef.trim().length > 0;
-  if (Array.isArray(evidenceRef)) return evidenceRef.length > 0;
-  return true;
+  if (typeof evidenceRef === 'string') return !isBlankString(evidenceRef);
+  if (!Array.isArray(evidenceRef)) return true;
+
+  const stack: unknown[] = [evidenceRef];
+  const visitedArrays = new Set<unknown[]>();
+  while (stack.length > 0) {
+    const item = stack.pop();
+    if (item == null) continue;
+    if (typeof item === 'string') {
+      if (!isBlankString(item)) return true;
+      continue;
+    }
+    if (!Array.isArray(item)) return true;
+    if (visitedArrays.has(item)) continue;
+    visitedArrays.add(item);
+    for (const child of item) stack.push(child);
+  }
+  return false;
 }
 
 /**
