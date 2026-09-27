@@ -15,9 +15,8 @@ npm run typecheck
 npm run build
 ```
 
-The package is source-available under the MIT license and is not published to
-npm. The [test suite](test/) is the shortest path through every status and
-edge case.
+The package is MIT licensed. The [test suite](test/) is the shortest path
+through every status and edge case.
 
 ## When to use this, and when not to
 
@@ -63,12 +62,12 @@ needs to decide whether the evidence supports the words being published.
 ## Use it in a project
 
 ```bash
-npm install github:lkopietz3-byte/claims-registry-kit
+npm install claims-registry-kit
 ```
 
 Zero runtime dependencies. ESM only (`"type": "module"`).
-Git installation builds the package through its `prepare` script. Use a
-reviewed commit reference when you need a repeatable dependency.
+
+Or build from source: clone the repository and run `npm install && npm run build`.
 
 ## Example: a toy SaaS product
 
