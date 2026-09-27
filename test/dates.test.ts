@@ -7,17 +7,16 @@ function ageOf(verifiedAt: unknown, now: Date = NOW): number | null {
   return evaluateClaim(looseClaim({ verifiedAt }), 90, now).ageDays;
 }
 
-describe('verifiedAt: accepted ISO 8601 forms (all read as UTC unless an offset says otherwise)', () => {
+describe('verifiedAt: accepted ISO 8601 forms (a bare date is UTC midnight; a timestamp needs an explicit zone)', () => {
   it.each([
     ['date only is UTC midnight', '2026-08-02', 0],
     ['date only, nine days back', '2026-07-24', 9],
-    ['date and hour:minute', '2026-07-24T00:00', 9],
-    ['no offset means UTC: 12:00 is 8.5 days back', '2026-07-24T12:00:00', 8],
+    ['hour:minute with an explicit Z, seconds optional', '2026-07-24T00:00Z', 9],
     ['explicit Z', '2026-07-24T12:00:00Z', 8],
     ['fractional seconds', '2026-07-24T12:00:00.5Z', 8],
     ['long fractional seconds are truncated', '2026-07-24T12:00:00.123456789Z', 8],
     ['lowercase t and z', '2026-07-24t12:00:00z', 8],
-    ['a space instead of T', '2026-07-24 12:00:00', 8],
+    ['a space instead of T, with an explicit zone', '2026-07-24 12:00:00Z', 8],
     // 02:00+05:00 on the 25th is 21:00Z on the 24th: 8.125 days back. Ignoring the offset gives 7.
     ['positive offset with colon', '2026-07-25T02:00:00+05:00', 8],
     ['positive offset without colon', '2026-07-25T02:00:00+0500', 8],
@@ -50,6 +49,12 @@ describe('verifiedAt: accepted ISO 8601 forms (all read as UTC unless an offset 
 
 describe('verifiedAt: values that are not usable ISO 8601 read as unparseable (null age, stale)', () => {
   it.each([
+    // A timestamp with a time-of-day but no explicit zone. Guessing UTC here
+    // (the pre-fix behavior) silently gave the same string a different age
+    // depending on where it was evaluated -- these are unparseable, not UTC.
+    ['hour:minute with no zone', '2026-07-24T00:00'],
+    ['hour:minute:second with no zone', '2026-07-24T12:00:00'],
+    ['a space instead of T, with no zone', '2026-07-24 12:00:00'],
     // Days that do not exist. The built-in Date parser silently rolls these forward.
     ['2026-02-29 (2026 is not a leap year)', '2026-02-29'],
     ['2026-02-30', '2026-02-30'],
@@ -139,13 +144,9 @@ describe('age is computed in elapsed 24-hour periods, so time zone and DST do no
   });
 
   const cases: [string, Date][] = [
-    ['2026-05-04T00:00:00', NOW], // no offset: was read as machine-local time
     ['2026-05-04', NOW],
     ['2026-05-04T00:00:00Z', NOW],
     ['2026-05-04T05:30:00+05:30', NOW],
-    // US spring-forward (2026-03-08) and fall-back (2026-11-01) fall inside these spans.
-    ['2026-03-07T12:00:00', new Date('2026-03-09T12:00:00Z')],
-    ['2026-10-31T12:00:00', new Date('2026-11-02T12:00:00Z')],
     ['2026-03-08', new Date('2026-03-09T00:00:00Z')],
     ['2026-11-01', new Date('2026-11-02T00:00:00Z')],
   ];
@@ -160,10 +161,21 @@ describe('age is computed in elapsed 24-hour periods, so time zone and DST do no
     expect(first.ageDays).not.toBeNull();
   });
 
-  it('a timestamp without an offset is exactly its UTC reading, in any zone', () => {
-    for (const tz of zones) {
-      const age = withTimeZone(tz, () => ageOf('2026-05-04T00:00:00'));
-      expect(age).toBe(90);
+  it('a zoneless timestamp is unparseable in every time zone, never silently read as machine-local time', () => {
+    // US spring-forward (2026-03-08) and fall-back (2026-11-01) fall inside
+    // these spans, so this also guards against the rejection itself somehow
+    // depending on DST.
+    const zonelessCases: [string, Date][] = [
+      ['2026-05-04T00:00:00', NOW],
+      ['2026-03-07T12:00:00', new Date('2026-03-09T12:00:00Z')],
+      ['2026-10-31T12:00:00', new Date('2026-11-02T12:00:00Z')],
+    ];
+    for (const [verifiedAt, now] of zonelessCases) {
+      for (const tz of zones) {
+        const result = withTimeZone(tz, () => evaluateClaim(claim({ verifiedAt }), 90, now));
+        expect(result.ageDays).toBeNull();
+        expect(result.status).toBe('stale');
+      }
     }
   });
 

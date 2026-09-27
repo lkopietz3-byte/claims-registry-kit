@@ -137,6 +137,28 @@ describe('claims input validation', () => {
   });
 });
 
+describe('generateClaimsReport rejects a claim with no id', () => {
+  it.each([
+    ['missing entirely', looseClaim({ id: undefined })],
+    ['null', looseClaim({ id: null })],
+    ['an empty string', looseClaim({ id: '' })],
+    ['whitespace only', looseClaim({ id: '   ' })],
+    ['a number', looseClaim({ id: 42 })],
+  ])('rejects an id that is %s, naming the offending claim', (_label, bad) => {
+    expect(() => generateClaimsReport([bad], 90, NOW)).toThrow(TypeError);
+    expect(() => generateClaimsReport([bad], 90, NOW)).toThrow(/claims\[0\]\.id/);
+  });
+
+  it('names the correct index when a later claim in the list has no id', () => {
+    const list = [claim({ id: 'ok' }), looseClaim({ id: undefined })];
+    expect(() => generateClaimsReport(list, 90, NOW)).toThrow(/claims\[1\]\.id/);
+  });
+
+  it('does not reject a well-formed id', () => {
+    expect(() => generateClaimsReport([claim({ id: 'realtime-sync' })], 90, NOW)).not.toThrow();
+  });
+});
+
 describe('checkEvidenceLinked agrees with evaluateClaim', () => {
   it('returns exactly what evaluateClaim reports for each unlinked claim, ageDays included', () => {
     const claims = [

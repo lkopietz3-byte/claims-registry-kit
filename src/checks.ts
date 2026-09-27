@@ -1,6 +1,6 @@
 import { parseIsoInstant } from './dates.js';
 import type { Claim, ClaimStatus, EvaluatedClaim } from './types.js';
-import { assertClaimList, assertClaimObject, assertMaxAgeDays, assertNow } from './validate.js';
+import { assertClaimId, assertClaimList, assertClaimObject, assertMaxAgeDays, assertNow } from './validate.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -98,9 +98,12 @@ function hasEvidence(evidenceRef: unknown): boolean {
  * even for a claim `verifiedAt` an hour ago — see `ClaimStatus` in
  * `types.ts` for why.
  *
- * `verifiedAt` is parsed as strict ISO 8601 in UTC (a bare date or an
- * offset-free timestamp is never read as local time), so the result does
- * not depend on the machine's time zone. A future `verifiedAt` is treated as
+ * `verifiedAt` is parsed as strict ISO 8601: a bare date is read as UTC
+ * midnight, and a full timestamp must carry an explicit zone (`Z` or an
+ * offset) — a timestamp with a time-of-day but no zone is unparseable
+ * (`ageDays: null`, `status: 'stale'`), never silently read as UTC or as the
+ * machine's local time zone. Either way the result never depends on the
+ * machine's time zone. A future `verifiedAt` is treated as
  * a typo and reported `'stale'`, not `'current'`, once it is further ahead
  * than its format can honestly explain: a bare `YYYY-MM-DD` gets up to 14
  * hours (it could already be "today" in a zone ahead of UTC), while an
@@ -244,7 +247,12 @@ export interface ClaimsReport<EvidenceRef = string> {
  * appear in the input array.
  *
  * @throws {TypeError} if `claims` is not an array (or contains a non-object
- * entry), `maxAgeDays` is not a number, or `now` is not a `Date`.
+ * entry, or an entry whose `id` is not a non-empty string), `maxAgeDays` is
+ * not a number, or `now` is not a `Date`. A claim with no `id` is rejected
+ * rather than included with a blank/`undefined` label: `id` is how
+ * `formatClaimsReportAsText` and a caller's own tracking name "this specific
+ * claim" again later, and a claim this library can never point back to isn't
+ * a smaller version of a valid one.
  * @throws {RangeError} if `maxAgeDays` is negative or non-finite, or `now`
  * is an Invalid Date.
  */
@@ -254,6 +262,9 @@ export function generateClaimsReport<EvidenceRef = string>(
   now: Date = new Date(),
 ): ClaimsReport<EvidenceRef> {
   assertClaimList(claims);
+  claims.forEach((claim, i) => {
+    assertClaimId(claim.id, `claims[${String(i)}]`);
+  });
   assertMaxAgeDays(maxAgeDays);
   assertNow(now);
   const evaluated = claims.map((claim) => evaluate(claim, maxAgeDays, now));
