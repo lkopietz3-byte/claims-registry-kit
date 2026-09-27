@@ -17,16 +17,30 @@ const ISO =
 
 const MS_PER_MINUTE = 60_000;
 
+/** Result of a successful parse: the instant, and whether the input had no time component. */
+export interface ParsedIsoInstant {
+  /** Epoch milliseconds. */
+  instant: number;
+  /** True for a bare `YYYY-MM-DD` value; false for any timestamp, offset or not. */
+  dateOnly: boolean;
+}
+
 /**
- * Parse an ISO 8601 date or timestamp to epoch milliseconds, or `null` when
- * the value is not a string, not one of the accepted forms, or names a moment
- * that does not exist (Feb 30, hour 24, minute 60, ...).
+ * Parse an ISO 8601 date or timestamp, or `null` when the value is not a
+ * string, not one of the accepted forms, or names a moment that does not
+ * exist (Feb 30, hour 24, minute 60, ...).
+ *
+ * `dateOnly` distinguishes a bare calendar date from an explicit timestamp:
+ * a bare date carries no time zone, so a caller may reasonably get a
+ * future-date grace period a timestamp (an exact, zoned instant) should not
+ * — see `checks.ts`'s future-tolerance handling.
  */
-export function parseIsoInstant(value: unknown): number | null {
+export function parseIsoInstant(value: unknown): ParsedIsoInstant | null {
   if (typeof value !== 'string') return null;
   const match = ISO.exec(value);
   if (match === null) return null;
 
+  const dateOnly = match[4] === undefined;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
@@ -60,5 +74,5 @@ export function parseIsoInstant(value: unknown): number | null {
     offsetMinutes = sign * (offsetHours * 60 + offsetMins);
   }
 
-  return date.getTime() - offsetMinutes * MS_PER_MINUTE;
+  return { instant: date.getTime() - offsetMinutes * MS_PER_MINUTE, dateOnly };
 }

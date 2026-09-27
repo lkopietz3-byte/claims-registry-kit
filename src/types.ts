@@ -61,12 +61,14 @@ export interface Claim<EvidenceRef = string> {
  *   how recent `verifiedAt` is. A fresh date next to an empty reference
  *   isn't evidence of anything.
  * - `'stale'` — `evidenceRef` is present, but `verifiedAt` is older than
- *   the caller's `maxAgeDays` policy, more than a day in the future (a
- *   likely typo — see `evaluateClaim`), or doesn't parse as a date at all.
- *   All three are treated conservatively as stale so a bad date can't hide
- *   a claim from review.
+ *   the caller's `maxAgeDays` policy, further in the future than its own
+ *   format can honestly explain (a likely typo — see `evaluateClaim`), or
+ *   doesn't parse as a date at all. All three are treated conservatively as
+ *   stale so a bad date can't hide a claim from review.
  * - `'current'` — `evidenceRef` is present and `verifiedAt` is within
- *   policy (including up to a day in the future, read as clock skew).
+ *   policy (including a future `verifiedAt` still inside its format's
+ *   tolerance: up to 14 hours for a bare date, none for an explicit
+ *   timestamp — see `evaluateClaim`).
  */
 export type ClaimStatus = 'current' | 'stale' | 'unverified';
 

@@ -5,11 +5,19 @@ import { assertClaimList, assertClaimObject, assertMaxAgeDays, assertNow } from 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
- * How far past `now` a `verifiedAt` may be before it stops looking like clock
- * skew (or a date-only value written in a zone ahead of UTC, at most 14 hours)
- * and starts looking like a typo.
+ * How far past `now` a bare `YYYY-MM-DD` `verifiedAt` may be before it stops
+ * looking like a date written in a zone ahead of UTC and starts looking like
+ * a typo. UTC+14:00 (for example Pacific/Kiritimati) is the furthest-ahead
+ * civil time zone in the IANA database, so a bare date is already "today"
+ * somewhere on Earth up to 14 hours before UTC agrees. This matches
+ * freshness-kit's bare-date rule (see its README's "Relationship to
+ * claims-registry-kit" section).
+ *
+ * An explicit timestamp (anything with a time component, offset or not)
+ * names an exact instant and gets none of this grace: even one millisecond
+ * past `now` is a typo, not clock skew.
  */
-const FUTURE_TOLERANCE_MS = MS_PER_DAY;
+const MAX_BARE_DATE_FUTURE_TOLERANCE_MS = 14 * 60 * 60 * 1000;
 
 interface Age {
   /** Whole elapsed 24-hour periods; `null` when `verifiedAt` is unparseable. */
@@ -19,10 +27,11 @@ interface Age {
 }
 
 function computeAge(verifiedAt: unknown, now: Date): Age {
-  const verifiedMs = parseIsoInstant(verifiedAt);
-  if (verifiedMs === null) return { ageDays: null, usable: false };
-  const elapsedMs = now.getTime() - verifiedMs;
-  if (elapsedMs < -FUTURE_TOLERANCE_MS) {
+  const parsed = parseIsoInstant(verifiedAt);
+  if (parsed === null) return { ageDays: null, usable: false };
+  const tolerance = parsed.dateOnly ? MAX_BARE_DATE_FUTURE_TOLERANCE_MS : 0;
+  const elapsedMs = now.getTime() - parsed.instant;
+  if (elapsedMs < -tolerance) {
     return { ageDays: Math.floor(elapsedMs / MS_PER_DAY), usable: false };
   }
   // Within tolerance a slightly-future date reads as "just now", never as -1.
@@ -91,9 +100,12 @@ function hasEvidence(evidenceRef: unknown): boolean {
  *
  * `verifiedAt` is parsed as strict ISO 8601 in UTC (a bare date or an
  * offset-free timestamp is never read as local time), so the result does
- * not depend on the machine's time zone. A `verifiedAt` more than a day
- * ahead of `now` is treated as a typo and reported `'stale'`, not
- * `'current'`, so a wrong future date can't hide a claim from review.
+ * not depend on the machine's time zone. A future `verifiedAt` is treated as
+ * a typo and reported `'stale'`, not `'current'`, once it is further ahead
+ * than its format can honestly explain: a bare `YYYY-MM-DD` gets up to 14
+ * hours (it could already be "today" in a zone ahead of UTC), while an
+ * explicit timestamp — an exact, zoned instant — gets none. Either way, a
+ * wrong future date can't hide a claim from review.
  *
  * @throws {TypeError} if `claim` is not an object, `maxAgeDays` is not a
  * number, or `now` is not a `Date`.
@@ -134,8 +146,9 @@ function evaluate<EvidenceRef>(
 
 /**
  * Which claims have gone stale: `evidenceRef` is present, but `verifiedAt`
- * is older than `maxAgeDays`, more than a day in the future, or unparseable
- * — see `evaluateClaim` for exactly how each is decided.
+ * is older than `maxAgeDays`, further in the future than its format's
+ * tolerance, or unparseable — see `evaluateClaim` for exactly how each is
+ * decided.
  *
  * Claims with a missing `evidenceRef` are never included here, even if
  * their `verifiedAt` is ancient — that's `checkEvidenceLinked`'s job. Each
