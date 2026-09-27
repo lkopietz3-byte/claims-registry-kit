@@ -9,6 +9,12 @@ overdue.
 ## Start here
 
 ```bash
+npm install claims-registry-kit
+```
+
+Working on this repo instead? Clone it, then:
+
+```bash
 npm ci
 npm test
 npm run typecheck
@@ -185,7 +191,10 @@ a map, not the whole story.
   The record you build; `EvidenceRef` defaults to `string` but can be any
   shape you supply.
 - **`IsoDateString`** — a `string` alias for `verifiedAt`: a bare
-  `'YYYY-MM-DD'` or a full ISO 8601 timestamp, always read as UTC.
+  `'YYYY-MM-DD'` (read as UTC midnight), or a full ISO 8601 timestamp that
+  MUST carry an explicit `Z` or `+HH:mm`/`-HH:mm` offset. A timestamp with a
+  time-of-day but no zone (e.g. `'2026-01-01T12:00:00'`) is treated as
+  unparseable, not silently read as UTC — see "Honest limits".
 - **`ClaimStatus`** — `'current' | 'stale' | 'unverified'`, always computed,
   never stored.
 - **`EvaluatedClaim<EvidenceRef>`** — a `Claim` plus `status` and `ageDays`
@@ -231,7 +240,7 @@ their TSDoc for the exact conditions.
   whether one still proves the other. That's out of scope on purpose. Pair
   this library with a grounding/citation-verification tool for that half of
   the problem —
-  `grounding-kit` (a sibling kit, not yet public), a
+  [`grounding-kit`](https://github.com/lkopietz3-byte/grounding-kit), a
   sibling project, classifies AI-generated text against the evidence it
   cites; this library deliberately does not attempt to reimplement that job
   for any kind of claim.
@@ -239,14 +248,22 @@ their TSDoc for the exact conditions.
   person (or a bot) from bumping the date without actually re-checking the
   evidence. This library can tell you a claim hasn't been looked at in 200
   days; it can't tell you whether the last "verification" was real.
-- **Dates are strict ISO 8601, read as UTC, not "whatever `new Date()`
-  accepts."** `verifiedAt` must be `'YYYY-MM-DD'` or a full timestamp
-  (optionally with a `Z` or `+HH:mm` offset); a bare timestamp with no
-  offset is read as UTC, never as the machine's local time zone, so the
-  same registry gives the same answer in every time zone. A value outside
-  that format (a month name, `MM/DD/YYYY`, an impossible calendar day) is
-  treated as unparseable — conservatively `'stale'`, never `'current'` —
-  rather than guessed at.
+- **Dates are strict ISO 8601, not "whatever `new Date()` accepts" — and an
+  unparseable `verifiedAt` fails safe to `'stale'` with `ageDays: null`.**
+  `verifiedAt` must be either a bare `'YYYY-MM-DD'` (read as UTC midnight —
+  it has no time-of-day, so there's nothing to be ambiguous about) or a full
+  timestamp that carries an explicit `Z` or `+HH:mm`/`-HH:mm` offset. **A
+  timestamp with a time-of-day but no zone, like `'2026-01-01T12:00:00'`, is
+  NOT read as UTC** — it's treated exactly like any other unparseable value:
+  `status: 'stale'` and `ageDays: null`, matching `freshness-kit`'s rule that
+  a zone is required once there's a time-of-day for it to disambiguate.
+  Guessing UTC for a zoneless timestamp would give the same string a
+  different (and silently wrong) age depending on where it was evaluated;
+  failing to `'stale'` instead means the worst a bad or ambiguous date can do
+  is get a claim reviewed again, never hide it as `'current'`. The same
+  fail-safe rule applies to any other value outside the accepted formats (a
+  month name, `MM/DD/YYYY`, an impossible calendar day like `2026-02-30`) —
+  always `'stale'`/`null`, never guessed at, never `'current'`.
 - **A future `verifiedAt` gets a grace period sized to what its format can
   honestly explain, then reads as a typo.** A bare `'YYYY-MM-DD'` carries no
   time zone, so it may be up to 14 hours ahead of UTC before it's treated as
