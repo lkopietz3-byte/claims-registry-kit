@@ -54,8 +54,10 @@ and PR, plus a Node 20/22/24 compatibility job.
 
 ## Release and rollback
 
-Not yet published to npm (see README install instructions). Version stays
-`0.1.0` until a real release; `CHANGELOG.md` gets one dated entry per
-release from then on. There is no running service to roll back — a bad
-release is simply not tagged/installed, and the previous git commit is the
-rollback.
+`npm run verify` (lint, typecheck, test, build, verify:package) runs
+automatically before publish via the `prepublishOnly` script, so a broken
+build cannot be published by accident. To release: update `CHANGELOG.md`
+with a dated entry, bump `version`, then `npm publish`. npm allows
+`npm unpublish` only within 72 hours of publishing, so after that window
+prefer publishing a fixed patch version over trying to unpublish a bad
+release.
