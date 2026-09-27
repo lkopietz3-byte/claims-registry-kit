@@ -16,8 +16,26 @@ npm run build
 ```
 
 The package is source-available under the MIT license and is not published to
-npm. The [test suite](test/claims.test.ts) is the shortest path through every
-status and edge case.
+npm. The [test suite](test/) is the shortest path through every status and
+edge case.
+
+## When to use this, and when not to
+
+Use it when you already publish claims about your product (a landing page, a
+pricing table, a pitch deck, a status page) and want a cheap, automatable way
+to notice when one has gone unlinked or stale — a CI check, a pre-launch
+script, a periodic manual pass.
+
+Don't reach for this if you need any of the following; it doesn't do them:
+
+- **Verifying a claim is actually true.** This library never opens the file,
+  fetches the URL, or runs the test named in `evidenceRef`. See
+  [Honest limits](#honest-limits).
+- **A live monitor, cron, or dashboard.** There's no scheduler, no webhook,
+  no persistence beyond the process. You call a function, you get an answer
+  for that moment; wiring it into a schedule is your job.
+- **Storage.** `createClaimsRegistry` is an in-memory list, not a database.
+  Bring your own storage for anything that needs to survive a restart.
 
 ## The idea, plainly
 
@@ -155,27 +173,89 @@ you hand it, once, when you call it. If you want it on a schedule, wire the
 script above into whatever scheduler you already use — that's outside this
 library's job.
 
+## API reference
+
+Every export, briefly. Full behavior and edge cases are in each function's
+TSDoc in [`src/checks.ts`](src/checks.ts), [`src/registry.ts`](src/registry.ts),
+and [`src/types.ts`](src/types.ts) — read those for the exact rules; this is
+a map, not the whole story.
+
+### Types
+
+- **`Claim<EvidenceRef = string>`** — `{ id, text, evidenceRef, verifiedAt, verifiedBy? }`.
+  The record you build; `EvidenceRef` defaults to `string` but can be any
+  shape you supply.
+- **`IsoDateString`** — a `string` alias for `verifiedAt`: a bare
+  `'YYYY-MM-DD'` or a full ISO 8601 timestamp, always read as UTC.
+- **`ClaimStatus`** — `'current' | 'stale' | 'unverified'`, always computed,
+  never stored.
+- **`EvaluatedClaim<EvidenceRef>`** — a `Claim` plus `status` and `ageDays`
+  (whole elapsed days, or `null` if `verifiedAt` didn't parse).
+
+### Functions
+
+- **`evaluateClaim(claim, maxAgeDays, now?)`** → `EvaluatedClaim` — decide
+  one claim's status. Every other function funnels through this, so a claim
+  is always bucketed the same way. Defaults `now` to `new Date()`.
+- **`checkStaleness(claims, maxAgeDays, now?)`** → `EvaluatedClaim[]` — only
+  the claims that are `'stale'`, in input order.
+- **`checkEvidenceLinked(claims, now?)`** → `EvaluatedClaim[]` — only the
+  claims that are `'unverified'` (no usable `evidenceRef`), in input order.
+- **`generateClaimsReport(claims, maxAgeDays, now?)`** → `ClaimsReport` — all
+  three buckets plus counts and a `generatedAt` timestamp, in one call.
+- **`formatClaimsReportAsText(report)`** → `string` — a `ClaimsReport`
+  rendered as plain text for a terminal or a CI job summary.
+- **`createClaimsRegistry<EvidenceRef>()`** → `ClaimsRegistry` — an optional
+  in-memory store: `registerClaim` (throws on a duplicate `id`), `getClaims`,
+  `getClaim(id)`, `clear()`. Copies claims in and out, so mutating an object
+  you registered or one you got back never changes what the registry holds.
+
+`evaluateClaim`, `checkStaleness`, `checkEvidenceLinked`, and
+`generateClaimsReport` throw `TypeError`/`RangeError` on a malformed
+argument (a non-array `claims`, a negative or non-numeric `maxAgeDays`, an
+Invalid Date `now`) rather than silently returning a wrong answer — see
+their TSDoc for the exact conditions.
+
 ## Honest limits
 
 - **This checks that a claim HAS a linked evidence reference, and whether
   that check is stale. It does NOT verify the evidence still actually
-  proves the claim.** `checkEvidenceLinked` is a structural, one-line
-  presence check (is `evidenceRef` non-empty?) — it never opens the file,
-  fetches the URL, or runs the test named in `evidenceRef`. A claim can
-  point at a file that was gutted in last week's refactor and still read
-  as `'current'` here, as long as someone bumped `verifiedAt`. Verifying
-  that the evidence *still supports the claim's text* is a separate, much
-  harder, domain-specific problem — it requires understanding both the
-  claim and the artifact well enough to judge whether one still proves the
-  other. That's out of scope on purpose. Pair this library with a
-  grounding/citation-verification tool for that half of the problem (for
-  example, a sentence-level grounding checker that classifies text against
-  a set of evidence) — this library deliberately does not attempt to
-  reimplement that job.
+  proves the claim.** `checkEvidenceLinked` is a structural presence check —
+  is `evidenceRef` non-blank once whitespace and invisible formatting
+  characters are stripped (or, for a list, does at least one of its entries
+  qualify) — and it never opens the file, fetches the URL, or runs the test
+  named in `evidenceRef`. A claim can point at a file that was gutted in last week's
+  refactor and still read as `'current'` here, as long as someone bumped
+  `verifiedAt`. Verifying that the evidence *still supports the claim's
+  text* is a separate, much harder, domain-specific problem — it requires
+  understanding both the claim and the artifact well enough to judge
+  whether one still proves the other. That's out of scope on purpose. Pair
+  this library with a grounding/citation-verification tool for that half of
+  the problem —
+  `grounding-kit` (a sibling kit, not yet public), a
+  sibling project, classifies AI-generated text against the evidence it
+  cites; this library deliberately does not attempt to reimplement that job
+  for any kind of claim.
 - **`verifiedAt` is only as honest as whoever sets it.** Nothing stops a
   person (or a bot) from bumping the date without actually re-checking the
   evidence. This library can tell you a claim hasn't been looked at in 200
   days; it can't tell you whether the last "verification" was real.
+- **Dates are strict ISO 8601, read as UTC, not "whatever `new Date()`
+  accepts."** `verifiedAt` must be `'YYYY-MM-DD'` or a full timestamp
+  (optionally with a `Z` or `+HH:mm` offset); a bare timestamp with no
+  offset is read as UTC, never as the machine's local time zone, so the
+  same registry gives the same answer in every time zone. A value outside
+  that format (a month name, `MM/DD/YYYY`, an impossible calendar day) is
+  treated as unparseable — conservatively `'stale'`, never `'current'` —
+  rather than guessed at.
+- **A future `verifiedAt` gets a grace period sized to what its format can
+  honestly explain, then reads as a typo.** A bare `'YYYY-MM-DD'` carries no
+  time zone, so it may be up to 14 hours ahead of UTC before it's treated as
+  a typo rather than clock skew — it can already be "today" in a zone ahead
+  of UTC (UTC+14, e.g. Pacific/Kiritimati, is the furthest-ahead civil zone).
+  An explicit timestamp names an exact, zoned instant and gets none of that
+  slack: even one millisecond past `now` reads `'stale'`, not `'current'`.
+  This matches the future-date rule in the sibling `freshness-kit` library.
 - **No persistence, no scheduling, no notifications.** `createClaimsRegistry`
   is in-memory only and resets on restart. There's no built-in file
   format, database schema, cron, Slack webhook, or dashboard. Bring your
@@ -186,18 +266,27 @@ library's job.
   assume it's a file path, a URL, or anything specific — `Claim<EvidenceRef
   = string>` lets you supply a richer type (e.g. `{ kind: 'test' | 'url'
   | 'file'; ref: string }`) if a plain string isn't enough for your system.
-  Whatever shape you choose, this library only ever checks whether it's
-  present, never what it points to.
+  A non-string, non-array value (your own evidence object, for example) is
+  always treated as present without inspecting it, since this library
+  doesn't know its shape.
 
 ## Files
 
 ```
 src/
-  types.ts       Claim, ClaimStatus, EvaluatedClaim
+  types.ts        Claim, IsoDateString, ClaimStatus, EvaluatedClaim
   registry.ts     createClaimsRegistry() — minimal in-memory registration
   checks.ts       evaluateClaim, checkStaleness, checkEvidenceLinked,
-                   generateClaimsReport, formatClaimsReportAsText
+                  generateClaimsReport, formatClaimsReportAsText
+  dates.ts        internal: strict ISO 8601 parsing (not exported)
+  validate.ts     internal: argument checks shared by checks.ts (not exported)
   index.ts        Barrel export
 test/
-  claims.test.ts  Toy SaaS ("TaskFlow") example exercising every function
+  claims.test.ts     Toy SaaS ("TaskFlow") example exercising every function
+  validation.test.ts argument validation (maxAgeDays, now, claims)
+  dates.test.ts      verifiedAt parsing, formats, and time zone/DST behavior
+  future.test.ts     a verifiedAt ahead of now
+  evidence.test.ts   what counts as a present vs. missing evidenceRef
+  registry.test.ts   createClaimsRegistry copy-in/copy-out isolation
+  helpers.ts         shared fixtures (not a test file itself)
 ```
