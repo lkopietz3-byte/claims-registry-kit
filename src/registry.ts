@@ -1,4 +1,5 @@
 import type { Claim } from './types.js';
+import { assertClaimId, assertClaimObject } from './validate.js';
 
 /**
  * A minimal in-memory registry for Claims.
@@ -26,7 +27,10 @@ export interface ClaimsRegistry<EvidenceRef = string> {
   /**
    * Add a claim to the registry. Throws if a claim with the same `id` is
    * already registered — silently overwriting a claim would defeat the
-   * point of a registry meant to catch drift.
+   * point of a registry meant to catch drift. Also throws if `claim` isn't
+   * an object or its `id` isn't a non-empty string: this registry is keyed
+   * by `id`, so a claim without one has no way to be found, updated, or
+   * de-duplicated again later.
    */
   registerClaim(claim: Claim<EvidenceRef>): void;
   /** All registered claims, in registration order. */
@@ -42,6 +46,8 @@ export function createClaimsRegistry<EvidenceRef = string>(): ClaimsRegistry<Evi
 
   return {
     registerClaim(claim) {
+      assertClaimObject(claim, 'claim');
+      assertClaimId(claim.id, 'claim');
       if (claims.has(claim.id)) {
         throw new Error(
           `claims-registry-kit: a claim with id "${claim.id}" is already registered`,

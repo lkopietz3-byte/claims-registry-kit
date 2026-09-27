@@ -10,7 +10,14 @@
 //
 // Accepted:  YYYY-MM-DD                          (UTC midnight)
 //            YYYY-MM-DD[T or space]HH:mm[:ss[.f{1,9}]][Z | +HH[[:]mm] | -HH[[:]mm]]
-// A timestamp with no offset is read as UTC, never as machine-local time.
+// A bare date has no time-of-day, so it is read as UTC midnight -- that's an
+// unambiguous, defensible reading, and freshness-kit does the same for a
+// bare date. A timestamp WITH a time-of-day but no zone is unparseable
+// (returns null), consistent with freshness-kit, which also requires an
+// explicit zone once there is a time-of-day to be ambiguous about: "noon,
+// no zone" could mean anything from a ~14-hour-wide band of actual instants
+// depending on the caller's local time zone, and silently guessing UTC gave
+// a claim's age a multi-hour error the caller never asked to accept.
 
 const ISO =
   /^(\d{4})-(\d{2})-(\d{2})(?:[Tt ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(?:([Zz])|([+-])(\d{2})(?::?(\d{2}))?)?)?$/;
@@ -34,6 +41,13 @@ export interface ParsedIsoInstant {
  * a bare date carries no time zone, so a caller may reasonably get a
  * future-date grace period a timestamp (an exact, zoned instant) should not
  * — see `checks.ts`'s future-tolerance handling.
+ *
+ * A timestamp (has a time-of-day) with no `Z`/offset is unparseable, not
+ * silently read as UTC: "2026-01-01T12:00:00" names a ~14-hour-wide band of
+ * real instants depending on the caller's local time zone, and guessing UTC
+ * would give the same string a different, silently-wrong age depending on
+ * where it was evaluated. A bare `YYYY-MM-DD` date has no time-of-day to be
+ * ambiguous about, so it is still read as UTC midnight.
  */
 export function parseIsoInstant(value: unknown): ParsedIsoInstant | null {
   if (typeof value !== 'string') return null;
@@ -41,6 +55,9 @@ export function parseIsoInstant(value: unknown): ParsedIsoInstant | null {
   if (match === null) return null;
 
   const dateOnly = match[4] === undefined;
+  const hasZone = match[8] !== undefined || match[9] !== undefined;
+  if (!dateOnly && !hasZone) return null;
+
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);

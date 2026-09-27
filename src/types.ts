@@ -15,11 +15,13 @@
 
 /**
  * ISO 8601 date string, e.g. `'2026-07-28'` or a full timestamp such as
- * `'2026-07-28T14:30:00Z'`. A timestamp with no UTC offset is read as UTC,
- * never as the machine's local time zone. Values this library cannot parse
- * as one of these forms (a month name, a slash-separated date, an
- * impossible calendar day) are treated as missing, not guessed at — see
- * `ClaimStatus`.
+ * `'2026-07-28T14:30:00Z'`. A bare date is read as UTC midnight. A full
+ * timestamp MUST carry an explicit `Z` or `+HH:mm`/`-HH:mm` offset — one
+ * with a time-of-day but no zone (e.g. `'2026-07-28T14:30:00'`) is treated
+ * as unparseable, never silently read as UTC or as the machine's local time
+ * zone. Values this library cannot parse as one of these forms (a month
+ * name, a slash-separated date, an impossible calendar day, a zoneless
+ * timestamp) are treated as missing, not guessed at — see `ClaimStatus`.
  */
 export type IsoDateString = string;
 

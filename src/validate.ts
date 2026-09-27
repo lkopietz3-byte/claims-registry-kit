@@ -43,6 +43,23 @@ export function assertClaimObject(value: unknown, label: string): asserts value 
   }
 }
 
+/**
+ * A claim's `id` must be a non-empty (after trimming) string. `label` names
+ * the offending claim in the message.
+ *
+ * `id` is how a caller finds "the same claim" again across runs (the
+ * registry's duplicate-detection key, and what a report's text output names
+ * a stale/unverified claim by). A missing or blank id isn't a smaller
+ * version of a valid claim; it's a claim this library can never point back
+ * to, so it must be rejected rather than silently accepted with a blank or
+ * `undefined` label.
+ */
+export function assertClaimId(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new TypeError(`${PREFIX}${label}.id must be a non-empty string (received ${describe(value)})`);
+  }
+}
+
 /** `claims` must be an array whose every entry (holes included) is a claim object. */
 export function assertClaimList(value: unknown): asserts value is readonly object[] {
   if (!Array.isArray(value)) {

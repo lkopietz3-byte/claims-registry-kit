@@ -61,6 +61,23 @@ describe('createClaimsRegistry isolates its stored claims from the caller', () =
     expect(() => registry.registerClaim(claim({ id: 'shared' }))).toThrow(/already registered/);
   });
 
+  it('rejects registering a claim with no id, so it can never be found again', () => {
+    const registry = createClaimsRegistry();
+    expect(() => registry.registerClaim({ ...claim(), id: undefined as unknown as string })).toThrow(
+      /claim\.id must be a non-empty string/,
+    );
+    expect(() => registry.registerClaim({ ...claim(), id: '' })).toThrow(TypeError);
+    expect(() => registry.registerClaim({ ...claim(), id: '   ' })).toThrow(TypeError);
+    // None of the rejected attempts left anything behind.
+    expect(registry.getClaims()).toHaveLength(0);
+  });
+
+  it('rejects a non-object argument to registerClaim', () => {
+    const registry = createClaimsRegistry();
+    expect(() => registry.registerClaim(null as unknown as Claim)).toThrow(TypeError);
+    expect(() => registry.registerClaim('not-a-claim' as unknown as Claim)).toThrow(TypeError);
+  });
+
   it('a generic evidenceRef object survives round-trip equal but not identical', () => {
     interface Ref {
       kind: 'file';
