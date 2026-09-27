@@ -232,7 +232,7 @@ their TSDoc for the exact conditions.
   whether one still proves the other. That's out of scope on purpose. Pair
   this library with a grounding/citation-verification tool for that half of
   the problem —
-  [`grounding-kit`](https://github.com/lkopietz3-byte/grounding-kit), a
+  `grounding-kit` (a sibling kit, not yet public), a
   sibling project, classifies AI-generated text against the evidence it
   cites; this library deliberately does not attempt to reimplement that job
   for any kind of claim.
