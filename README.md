@@ -247,8 +247,15 @@ their TSDoc for the exact conditions.
   same registry gives the same answer in every time zone. A value outside
   that format (a month name, `MM/DD/YYYY`, an impossible calendar day) is
   treated as unparseable — conservatively `'stale'`, never `'current'` —
-  rather than guessed at. A `verifiedAt` more than a day in the future is
-  treated as a typo the same way: `'stale'`, not `'current'`.
+  rather than guessed at.
+- **A future `verifiedAt` gets a grace period sized to what its format can
+  honestly explain, then reads as a typo.** A bare `'YYYY-MM-DD'` carries no
+  time zone, so it may be up to 14 hours ahead of UTC before it's treated as
+  a typo rather than clock skew — it can already be "today" in a zone ahead
+  of UTC (UTC+14, e.g. Pacific/Kiritimati, is the furthest-ahead civil zone).
+  An explicit timestamp names an exact, zoned instant and gets none of that
+  slack: even one millisecond past `now` reads `'stale'`, not `'current'`.
+  This matches the future-date rule in the sibling `freshness-kit` library.
 - **No persistence, no scheduling, no notifications.** `createClaimsRegistry`
   is in-memory only and resets on restart. There's no built-in file
   format, database schema, cron, Slack webhook, or dashboard. Bring your

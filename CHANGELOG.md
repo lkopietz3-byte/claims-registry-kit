@@ -21,8 +21,11 @@ First release. Not yet published to npm; install from GitHub (see README).
   offset-free timestamp is never read as the machine's local time zone, and
   anything outside that format is treated as unparseable rather than
   guessed at.
-- A `verifiedAt` more than a day in the future is treated as a likely typo
-  and reported `'stale'`, not `'current'`.
+- A future `verifiedAt` is treated as a likely typo and reported `'stale'`,
+  not `'current'`, once it is further ahead than its format can honestly
+  explain: a bare `YYYY-MM-DD` date gets up to 14 hours (it may already be
+  "today" in a zone ahead of UTC), while an explicit timestamp — an exact,
+  zoned instant — gets no grace period at all.
 - `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked`, and
   `generateClaimsReport` validate their arguments and throw
   `TypeError`/`RangeError` on a malformed `claims` array, `maxAgeDays`, or

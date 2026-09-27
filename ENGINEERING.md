@@ -17,6 +17,10 @@
   reading a bare timestamp as the machine's local time zone. A value that
   doesn't match, or a date/time that doesn't exist (`2026-02-30`, hour 24),
   is unparseable — `ageDays: null`, status `'stale'` — never guessed at.
+- **Future-date tolerance matches what the format can honestly explain.** A
+  bare `YYYY-MM-DD` gets up to 14 hours (UTC+14 is the furthest-ahead civil
+  zone, so it may already be "today" there); an explicit timestamp is an
+  exact instant and gets none. Past that, `'stale'`, never `'current'`.
 - **Missing evidence always outranks staleness.** A claim with no usable
   `evidenceRef` is `'unverified'`, regardless of how fresh `verifiedAt` is.
 - **Bad arguments throw, they don't fail open.** A non-finite/negative
