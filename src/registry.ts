@@ -28,10 +28,11 @@ export interface ClaimsRegistry<EvidenceRef = string> {
   /**
    * Add a claim to the registry. Throws if a claim with the same `id` is
    * already registered — silently overwriting a claim would defeat the
-   * point of a registry meant to catch drift. Also throws if `claim` isn't
-   * an object or its `id` isn't a non-empty string: this registry is keyed
-   * by `id`, so a claim without one has no way to be found, updated, or
-   * de-duplicated again later.
+   * point of a registry meant to catch drift. Also throws `TypeError` if
+   * `claim` isn't a plain (or null-prototype) object, or its `id` isn't a
+   * string that shows something (empty, whitespace-only and invisible-only
+   * ids are rejected): this registry is keyed by `id`, so a claim without
+   * one has no way to be found, updated, or de-duplicated again later.
    */
   registerClaim(claim: Claim<EvidenceRef>): void;
   /** All registered claims, in registration order. */
@@ -42,6 +43,38 @@ export interface ClaimsRegistry<EvidenceRef = string> {
   clear(): void;
 }
 
+/**
+ * Create an empty, in-memory `ClaimsRegistry`. Each call returns a separate
+ * registry with its own storage; nothing is shared between registries or
+ * persisted beyond the process, and nothing is read from disk or the network.
+ *
+ * `EvidenceRef` is the type of a claim's `evidenceRef` (a `string` by default;
+ * see `Claim`). The registry never inspects it.
+ *
+ * Its rules, in short:
+ * - `registerClaim` accepts only a plain or null-prototype object whose `id`
+ *   is a string that shows something (not empty, not whitespace or invisible
+ *   characters only) and throws `TypeError` otherwise. A second claim with an
+ *   `id` already registered throws `Error`, and the original is kept. The
+ *   claim is copied once, so a getter or a later mutation of the object you
+ *   passed cannot change the stored `id` or the key it is stored under.
+ * - `getClaims` returns claims in registration order; `getClaim(id)` finds a
+ *   claim by exact string `id` only, and returns `undefined` for anything else
+ *   (including a non-string key).
+ * - Copies are SHALLOW. Replacing a field on an object you registered or got
+ *   back never reaches the registry, but a nested array or object (for
+ *   example an `evidenceRef` list) is shared with you, not cloned or frozen.
+ *
+ * @example
+ * const registry = createClaimsRegistry();
+ * registry.registerClaim({
+ *   id: 'uptime',
+ *   text: '99.9% uptime',
+ *   evidenceRef: 'docs/uptime.md',
+ *   verifiedAt: '2026-07-20',
+ * });
+ * generateClaimsReport(registry.getClaims(), 90).counts.total; // 1
+ */
 export function createClaimsRegistry<EvidenceRef = string>(): ClaimsRegistry<EvidenceRef> {
   const claims = new Map<string, Claim<EvidenceRef>>();
 

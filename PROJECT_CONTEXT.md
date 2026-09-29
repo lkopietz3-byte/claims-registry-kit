@@ -5,7 +5,7 @@ Mapped on **2026-09-26** from connected GitHub, Vercel, and Supabase metadata. T
 ## Identity and repository settings
 
 - Repository: [lkopietz3-byte/claims-registry-kit](https://github.com/lkopietz3-byte/claims-registry-kit)
-- Purpose: A library for tracking public claims alongside evidence references and review dates so unsupported or overdue claims can be flagged.
+- Purpose: A small library that checks whether each public claim has an evidence reference and a review date within a policy you set, and flags claims with no reference or an overdue review. It checks structure, not truth: it never opens the evidence or judges whether it supports the claim, and it does not store or schedule anything.
 - GitHub visibility: **public**; default branch: **`main`**; archived: **no**.
 - Product stage, owner, production health, and GitHub protection/settings beyond the fields above: **not verified**.
 

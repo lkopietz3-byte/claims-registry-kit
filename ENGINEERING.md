@@ -8,11 +8,28 @@
   `checkEvidenceLinked`, and `generateClaimsReport` never mutate their
   `claims` argument or the `Claim` objects in it, and never read the system
   clock unless `now` is omitted. Same inputs, same outputs, every time.
+- **Caller input is read once.** Each claim, the `claims` array (by one
+  indexed pass that rejects holes) and `now` (through the `Date` intrinsics)
+  are copied or read a single time. Validation, the status decision and the
+  returned objects all use that copy, so a getter or Proxy cannot pass a
+  check with one value and return another.
+- **Claims are plain objects.** A Map, Date, array or class instance is a
+  `TypeError`, never a claim with no fields. A claim `id` that shows nothing
+  (empty, whitespace or invisible characters only) is rejected by
+  `generateClaimsReport` and `registerClaim`.
+- **Blank evidence means shows-nothing.** Only whitespace, control characters
+  and `Default_Ignorable_Code_Point` characters are blank. Visible text in any
+  script, emoji and bidi-wrapped visible text are present.
+- **Text output is escaped, structured output is raw.**
+  `formatClaimsReportAsText` prints control, line-break and bidi formatting
+  characters as visible `\uXXXX` escapes; the report object is never
+  modified.
 - **`createClaimsRegistry` owns its data.** `registerClaim`, `getClaims`,
   and `getClaim` shallow-copy the claim in and out, so mutating an object
   before or after it crosses that boundary never changes what the registry
   holds. (The copy is shallow: a nested `evidenceRef` array or object is
-  still shared with the caller.)
+  still shared with the caller, and there is no deep clone, freeze or
+  serialization.)
 - **`verifiedAt` is strict ISO 8601, read as UTC.** No locale parsing, no
   reading a bare timestamp as the machine's local time zone. A value that
   doesn't match, or a date/time that doesn't exist (`2026-02-30`, hour 24),
@@ -43,7 +60,9 @@ declarations. Run `node scripts/verify-package.mjs --update-api` after an
 intentional export change and review the `api-surface.json` diff.
 
 `.github/workflows/verify.yml` runs the same `verify` script on every push
-and PR, plus a Node 20/22/24 compatibility job.
+and PR, plus a Node 20/22/24 compatibility job. The compat job also runs
+Node 20.19.0 and 22.12.0 pinned (the exact `require(esm)` floors) and runs
+`scripts/verify-package.mjs`, which includes the CommonJS consumer probe.
 
 ## What is NOT certified
 
@@ -51,6 +70,8 @@ and PR, plus a Node 20/22/24 compatibility job.
   checks presence, never truth. See the README's Honest limits.
 - That `verifiedAt` reflects a real check someone did.
 - Behavior on Node < 20 (the `engines` field's floor; untested below it).
+- That the escaped text is safe for every renderer: it is escaped for plain
+  text and terminals, not for HTML or Markdown.
 
 ## Are the types wrong? (attw)
 
@@ -70,7 +91,8 @@ points).
 publish via the `prepublishOnly` script, so a broken build cannot reach the registry by
 accident. To release: add a dated entry to `CHANGELOG.md`, bump `version` in
 `package.json`, commit, and push a `vX.Y.Z` tag that matches the new version, then let
-`.github/workflows/release.yml` install, verify, and publish it. (You can also run
+`.github/workflows/release.yml` install, audit, verify, check types with attw,
+and publish it. (You can also run
 `npm publish` locally; `prepublishOnly` still guards it.)
 
 npm's unpublish policy is deliberately narrow. Within 72 hours of publishing, a version can be
@@ -96,12 +118,14 @@ bad release while it stays installable for anyone already pinned to it.
 ### Publishing with provenance
 
 `.github/workflows/release.yml` publishes using npm trusted publishing: it triggers on
-`workflow_dispatch` or a pushed `v*` tag, requests a short-lived OIDC token instead of
+`workflow_dispatch` or a pushed `v*` tag (both must run on a `v*` tag ref),
+requests a short-lived OIDC token instead of
 reading a stored npm token (`permissions: id-token: write`), and runs a plain `npm publish`
 with no token and no `--provenance` flag, because provenance attestation is generated
 automatically under trusted publishing. Before publishing, the workflow confirms the tag
 matches `package.json`'s `version` and checks whether that version is already on the
 registry, so re-running it on a version that's already published is a no-op rather than an
-error. Trusted publishing must be configured for this package on npmjs.com (linking it to this
+error. Only a confirmed E404 counts as "not published yet"; any other registry error fails
+the job. Trusted publishing must be configured for this package on npmjs.com (linking it to this
 GitHub repository and the `release.yml` workflow) before the first automated release will
 work.

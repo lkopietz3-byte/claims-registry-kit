@@ -71,9 +71,22 @@ needs to decide whether the evidence supports the words being published.
 npm install claims-registry-kit
 ```
 
-Zero runtime dependencies. ESM only (`"type": "module"`).
+Zero runtime dependencies. Ships TypeScript declarations. Or build from
+source: clone the repository and run `npm install && npm run build`.
 
-Or build from source: clone the repository and run `npm install && npm run build`.
+It is an ESM package (`"type": "module"`). `import` is the supported way to
+load it. `require()` also works where Node can `require(esm)`:
+
+| How you load it | Node 20.19+ | Node 22.12+ | Node 24 and 26 | Older Node 20 or 22 |
+| --- | --- | --- | --- | --- |
+| `import { evaluateClaim } from 'claims-registry-kit'` | works | works | works | works |
+| `require('claims-registry-kit')` | works | works | works | fails (no `require(esm)`); use `import()` |
+
+Recommended runtimes are Node 22 and 24 (LTS) and Node 26 (current). Node 20 is
+end-of-life. CI still runs the tests and the installed-package probes on Node
+20.19.0 and 22.12.0 (the `require(esm)` floors) to catch regressions, but that
+is compatibility testing, not a recommendation. `engines` in `package.json` is
+`>=20`.
 
 ## Example: a toy SaaS product
 
@@ -88,6 +101,10 @@ import {
   generateClaimsReport,
   formatClaimsReportAsText,
 } from 'claims-registry-kit';
+
+// Pin the clock so this example prints the same thing on any day. In real use,
+// leave `now` out and the current time is used.
+const NOW = new Date('2026-08-02T00:00:00.000Z');
 
 const claims: Claim[] = [
   {
@@ -111,7 +128,7 @@ const claims: Claim[] = [
   },
 ];
 
-const report = generateClaimsReport(claims, /* maxAgeDays */ 90);
+const report = generateClaimsReport(claims, /* maxAgeDays */ 90, NOW);
 
 console.log(formatClaimsReportAsText(report));
 // Claims report — generated 2026-08-02T00:00:00.000Z (maxAgeDays: 90)
@@ -127,8 +144,8 @@ console.log(formatClaimsReportAsText(report));
 You can also run the two underlying checks directly:
 
 ```ts
-checkStaleness(claims, 90);       // => [ soc2-claim, evaluated with status: 'stale' ]
-checkEvidenceLinked(claims);      // => [ uptime-claim, evaluated with status: 'unverified' ]
+checkStaleness(claims, 90, NOW);   // => [ soc2-claim, evaluated with status: 'stale' ]
+checkEvidenceLinked(claims, NOW);  // => [ uptime-claim, evaluated with status: 'unverified' ]
 ```
 
 Both `checkStaleness` and `checkEvidenceLinked` — and `generateClaimsReport`
@@ -143,7 +160,10 @@ evidence of anything.
 If it's convenient for several config modules to each register a claim at
 load time, `createClaimsRegistry` gives you one array to run checks
 against. It's optional — most callers will just keep an array of `Claim`
-objects wherever they already keep config and skip this entirely.
+objects wherever they already keep config and skip this entirely. The
+registry copies each claim object on the way in and out, but the copy is
+shallow: if `evidenceRef` is an array or an object, the registry and you still
+share that inner value (see [Honest limits](#honest-limits)).
 
 ```ts
 import { createClaimsRegistry, generateClaimsReport } from 'claims-registry-kit';
@@ -152,7 +172,7 @@ const registry = createClaimsRegistry();
 registry.registerClaim(claims[0]);
 registry.registerClaim(claims[1]);
 
-const report = generateClaimsReport(registry.getClaims(), 90);
+const report = generateClaimsReport(registry.getClaims(), 90, NOW);
 ```
 
 ### Running this as a CI check
@@ -189,7 +209,9 @@ a map, not the whole story.
 
 - **`Claim<EvidenceRef = string>`** — `{ id, text, evidenceRef, verifiedAt, verifiedBy? }`.
   The record you build; `EvidenceRef` defaults to `string` but can be any
-  shape you supply.
+  shape you supply. A claim must be a plain object (or one with a `null`
+  prototype): a `Map`, `Date`, array or class instance is rejected with a
+  `TypeError` instead of being read as a claim with no fields.
 - **`IsoDateString`** — a `string` alias for `verifiedAt`: a bare
   `'YYYY-MM-DD'` (read as UTC midnight), or a full ISO 8601 timestamp that
   MUST carry an explicit `Z` or `+HH:mm`/`-HH:mm` offset. A timestamp with a
@@ -212,38 +234,57 @@ a map, not the whole story.
 - **`generateClaimsReport(claims, maxAgeDays, now?)`** → `ClaimsReport` — all
   three buckets plus counts and a `generatedAt` timestamp, in one call.
 - **`formatClaimsReportAsText(report)`** → `string` — a `ClaimsReport`
-  rendered as plain text for a terminal or a CI job summary.
+  rendered as plain text for a terminal or a CI job summary. Claim ids and
+  text are caller strings, so control characters (including CR, LF and ESC),
+  line and paragraph separators and bidi formatting characters are printed as
+  visible `\uXXXX` escapes: a newline in a claim cannot forge a heading, and
+  an ESC byte cannot reach a terminal. Visible text in any script is left
+  alone and nothing is truncated. The `report` object itself stays raw, so
+  read ids and text from it, not from the printed string, for anything other
+  than showing to a person. The escaping is not reversible.
 - **`createClaimsRegistry<EvidenceRef>()`** → `ClaimsRegistry` — an optional
   in-memory store: `registerClaim` (throws on a duplicate `id`), `getClaims`,
-  `getClaim(id)`, `clear()`. Copies claims in and out, so mutating an object
-  you registered or one you got back never changes what the registry holds.
+  `getClaim(id)`, `clear()`. Copies the top level of each claim in and out, so
+  replacing a field on an object you registered or got back never changes what
+  the registry holds. The copy is shallow: an `evidenceRef` that is an array
+  or an object is shared, not cloned.
 
 `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked`, and
 `generateClaimsReport` throw `TypeError`/`RangeError` on a malformed
-argument (a non-array `claims`, a negative or non-numeric `maxAgeDays`, an
-Invalid Date `now`) rather than silently returning a wrong answer — see
-their TSDoc for the exact conditions.
+argument (a non-array `claims`, a hole in it, a claim that is not a plain
+object, a negative or non-numeric `maxAgeDays`, an Invalid Date `now`) rather
+than silently returning a wrong answer — see their TSDoc for the exact
+conditions. Each claim, the `claims` array and `now` are read once, then
+validated and used from that one copy, so a getter or Proxy that answers
+differently the second time cannot make the returned claim differ from the
+one that was judged. `now` must be a real `Date` (a `Date` subclass works; an
+object that only claims to be one does not).
+
+`generateClaimsReport` and `registerClaim` also reject a claim `id` that is not
+a string or shows nothing (empty, whitespace only, or only invisible
+characters).
 
 ## Honest limits
 
 - **This checks that a claim HAS a linked evidence reference, and whether
   that check is stale. It does NOT verify the evidence still actually
   proves the claim.** `checkEvidenceLinked` is a structural presence check —
-  is `evidenceRef` non-blank once whitespace and invisible formatting
-  characters are stripped (or, for a list, does at least one of its entries
-  qualify) — and it never opens the file, fetches the URL, or runs the test
-  named in `evidenceRef`. A claim can point at a file that was gutted in last week's
+  is `evidenceRef` non-blank (or, for a list, does at least one of its
+  entries qualify) — and it never opens the file, fetches the URL, or runs the
+  test named in `evidenceRef`. Blank means only whitespace, control characters
+  and `Default_Ignorable_Code_Point` characters (zero-width spaces and joiners,
+  bidi controls such as U+061C and U+2066–2069, variation selectors, Hangul
+  fillers and similar). Visible text in any script, emoji, and visible text
+  wrapped in bidi controls all count as present. A reference that draws
+  something but means nothing (a Braille blank, `TODO`) also counts as
+  present. A claim can point at a file that was gutted in last week's
   refactor and still read as `'current'` here, as long as someone bumped
   `verifiedAt`. Verifying that the evidence *still supports the claim's
   text* is a separate, much harder, domain-specific problem — it requires
   understanding both the claim and the artifact well enough to judge
-  whether one still proves the other. That's out of scope on purpose. Pair
-  this library with a grounding/citation-verification tool for that half of
-  the problem —
-  [`grounding-kit`](https://github.com/lkopietz3-byte/grounding-kit), a
-  sibling project, classifies AI-generated text against the evidence it
-  cites; this library deliberately does not attempt to reimplement that job
-  for any kind of claim.
+  whether one still proves the other. That's out of scope on purpose, and no kit
+  in this family does it for you (see [Relationship to sibling
+  kits](#relationship-to-sibling-kits)).
 - **`verifiedAt` is only as honest as whoever sets it.** Nothing stops a
   person (or a bot) from bumping the date without actually re-checking the
   evidence. This library can tell you a claim hasn't been looked at in 200
@@ -255,8 +296,9 @@ their TSDoc for the exact conditions.
   timestamp that carries an explicit `Z` or `+HH:mm`/`-HH:mm` offset. **A
   timestamp with a time-of-day but no zone, like `'2026-01-01T12:00:00'`, is
   NOT read as UTC** — it's treated exactly like any other unparseable value:
-  `status: 'stale'` and `ageDays: null`, matching `freshness-kit`'s rule that
-  a zone is required once there's a time-of-day for it to disambiguate.
+  `status: 'stale'` and `ageDays: null`. `freshness-kit` has the same zone
+  requirement but throws a `RangeError` there, where this library reports
+  `'stale'`.
   Guessing UTC for a zoneless timestamp would give the same string a
   different (and silently wrong) age depending on where it was evaluated;
   failing to `'stale'` instead means the worst a bad or ambiguous date can do
@@ -271,7 +313,30 @@ their TSDoc for the exact conditions.
   of UTC (UTC+14, e.g. Pacific/Kiritimati, is the furthest-ahead civil zone).
   An explicit timestamp names an exact, zoned instant and gets none of that
   slack: even one millisecond past `now` reads `'stale'`, not `'current'`.
-  This matches the future-date rule in the sibling `freshness-kit` library.
+  `freshness-kit` uses the same two thresholds (14 hours for a bare date, none
+  for a timestamp) but throws a `RangeError` past them instead of reporting
+  `'stale'`. This library's date grammar is also a little looser than
+  `freshness-kit`'s: it accepts a space instead of `T`, lowercase `t` and `z`,
+  a timestamp without seconds, an offset such as `+01` or `+0100`, and up to
+  nine fractional digits.
+- **Duplicate ids are only caught by the registry.** `createClaimsRegistry`
+  rejects a second claim with the same `id`. `generateClaimsReport` and the
+  checks take a plain array and do not: two claims with the same `id` can
+  land in different buckets of one report. Keep ids unique, or go through the
+  registry.
+- **The registry's copy is shallow.** `registerClaim`, `getClaims` and
+  `getClaim` copy the claim object, not what its fields point at. If
+  `evidenceRef` is an array or an object, the registry and the caller share
+  it: changing it in place after registering changes the registry's claim and
+  can change its status. There is no automatic deep clone, freeze or
+  serialization. Copy it yourself first if that matters.
+- **The text escaping is display-only.** `formatClaimsReportAsText` escapes
+  control, line-break and bidi formatting characters so the text cannot forge
+  structure or send terminal escapes. It does not stop invisible characters
+  that are not on that list (a zero-width space in an id still prints as
+  nothing), and a string that literally contains `\u001b` reads the same as
+  one that contains ESC. It is not an HTML or Markdown escaper: escape it
+  again for whatever renders it.
 - **No persistence, no scheduling, no notifications.** `createClaimsRegistry`
   is in-memory only and resets on restart. There's no built-in file
   format, database schema, cron, Slack webhook, or dashboard. Bring your
@@ -286,6 +351,20 @@ their TSDoc for the exact conditions.
   always treated as present without inspecting it, since this library
   doesn't know its shape.
 
+## Relationship to sibling kits
+
+- [`freshness-kit`](https://github.com/lkopietz3-byte/freshness-kit) turns a
+  review date into a graduated `fresh` / `aging` / `stale` signal and rejects
+  a bad or future date with a `RangeError`. This library uses the same date
+  rules for time zones and future dates but has one cutoff and reports a bad
+  date as `'stale'` instead of throwing (see Honest limits).
+- [`grounding-kit`](https://github.com/lkopietz3-byte/grounding-kit) checks
+  that sentences of AI-generated text carry citation markers that point into an
+  evidence map you supply. It is not a verifier for the claims tracked here:
+  its own README says its default support check is naive word overlap, not
+  entailment. Neither kit checks that a linked reference proves a claim's
+  text.
+
 ## Files
 
 ```
@@ -295,7 +374,8 @@ src/
   checks.ts       evaluateClaim, checkStaleness, checkEvidenceLinked,
                   generateClaimsReport, formatClaimsReportAsText
   dates.ts        internal: strict ISO 8601 parsing (not exported)
-  validate.ts     internal: argument checks shared by checks.ts (not exported)
+  text.ts         internal: blank-string check and display escaping (not exported)
+  validate.ts     internal: argument checks and one-time input copies (not exported)
   index.ts        Barrel export
 test/
   claims.test.ts     Toy SaaS ("TaskFlow") example exercising every function
@@ -303,6 +383,8 @@ test/
   dates.test.ts      verifiedAt parsing, formats, and time zone/DST behavior
   future.test.ts     a verifiedAt ahead of now
   evidence.test.ts   what counts as a present vs. missing evidenceRef
+  formatter.test.ts  formatClaimsReportAsText output and its escaping
+  inputs.test.ts     read-once snapshots, plain-object claims, blank ids
   registry.test.ts   createClaimsRegistry copy-in/copy-out isolation
   helpers.ts         shared fixtures (not a test file itself)
 ```

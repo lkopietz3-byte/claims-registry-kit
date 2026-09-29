@@ -17,8 +17,9 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * a typo. UTC+14:00 (for example Pacific/Kiritimati) is the furthest-ahead
  * civil time zone in the IANA database, so a bare date is already "today"
  * somewhere on Earth up to 14 hours before UTC agrees. This matches
- * freshness-kit's bare-date rule (see its README's "Relationship to
- * claims-registry-kit" section).
+ * freshness-kit's bare-date threshold (see its README's "Input contract and
+ * migration" section). The two differ in what happens past it: freshness-kit
+ * throws a RangeError, this library reports the claim 'stale'.
  *
  * An explicit timestamp (anything with a time component, offset or not)
  * names an exact instant and gets none of this grace: even one millisecond
@@ -109,8 +110,15 @@ function hasEvidence(evidenceRef: unknown): boolean {
  * explicit timestamp — an exact, zoned instant — gets none. Either way, a
  * wrong future date can't hide a claim from review.
  *
- * @throws {TypeError} if `claim` is not an object, `maxAgeDays` is not a
- * number, or `now` is not a `Date`.
+ * The claim, `maxAgeDays` and `now` are each read once. `claim` is copied a
+ * single time (shallow) and the status is decided from, and the result built
+ * from, that copy, so a getter or Proxy cannot make the returned fields differ
+ * from the ones judged.
+ *
+ * @throws {TypeError} if `claim` is not a plain or null-prototype object (a
+ * Map, Date, array or class instance is rejected), `maxAgeDays` is not a
+ * number, or `now` is not a real `Date` (a `Date` subclass or a cross-realm
+ * `Date` is fine; an object that only looks like one is not).
  * @throws {RangeError} if `maxAgeDays` is negative or non-finite, or `now`
  * is an Invalid Date. A bad policy or clock must fail loudly here rather
  * than silently marking every claim `'current'`.
@@ -161,8 +169,10 @@ function evaluate<EvidenceRef>(
  * claim gets exactly one bucket via `evaluateClaim`, never two. Results are
  * in the same order as `claims`.
  *
- * @throws {TypeError} if `claims` is not an array (or contains a non-object
- * entry), `maxAgeDays` is not a number, or `now` is not a `Date`.
+ * @throws {TypeError} if `claims` is not an array, has a hole, or contains an
+ * entry that is not a plain or null-prototype object; `maxAgeDays` is not a
+ * number; or `now` is not a `Date`. The list is copied once and validated and
+ * processed from that one dense copy.
  * @throws {RangeError} if `maxAgeDays` is negative or non-finite, or `now`
  * is an Invalid Date.
  */
@@ -188,12 +198,13 @@ export function checkStaleness<EvidenceRef = string>(
  * still supports what the claim says is a domain-specific, often semantic
  * judgment (does this test actually cover this sentence? does this page
  * still say what we think it says?) that this library does not attempt to
- * reimplement. Pair it with a grounding/citation-verification tool for
- * that — see the README's limits section.
+ * reimplement, and no sibling kit does it for you either — see the README's
+ * limits section.
  *
- * A string `evidenceRef` counts as present once whitespace and invisible
- * formatting characters are stripped; an array counts as present if any of
- * its elements do, checked recursively. See `Claim`'s doc comment for why
+ * A string `evidenceRef` counts as present unless it shows nothing (empty, or
+ * only whitespace, control characters and `Default_Ignorable_Code_Point`
+ * characters such as zero-width spaces and bidi controls); an array counts as
+ * present if any of its elements do, checked recursively. See `Claim`'s doc comment for why
  * any other value (an object, for a caller-defined evidence type) always
  * counts as present.
  *
@@ -202,8 +213,9 @@ export function checkStaleness<EvidenceRef = string>(
  * glance), but it plays no role in the `'unverified'` classification here.
  * Results are in the same order as `claims`.
  *
- * @throws {TypeError} if `claims` is not an array (or contains a non-object
- * entry) or `now` is not a `Date`.
+ * @throws {TypeError} if `claims` is not an array, has a hole, or contains an
+ * entry that is not a plain or null-prototype object; or `now` is not a
+ * `Date`.
  * @throws {RangeError} if `now` is an Invalid Date.
  */
 export function checkEvidenceLinked<EvidenceRef = string>(
@@ -247,11 +259,15 @@ export interface ClaimsReport<EvidenceRef = string> {
  * the claims and `now` you hand it, once, when you call it.
  *
  * `current`, `stale`, and `unverified` each preserve the order claims
- * appear in the input array.
+ * appear in the input array. Duplicate ids are not checked here (only
+ * `createClaimsRegistry` rejects them), so two claims with the same `id` can
+ * land in different buckets.
  *
- * @throws {TypeError} if `claims` is not an array (or contains a non-object
- * entry, or an entry whose `id` is not a non-empty string), `maxAgeDays` is
- * not a number, or `now` is not a `Date`. A claim with no `id` is rejected
+ * @throws {TypeError} if `claims` is not an array, has a hole, or contains an
+ * entry that is not a plain or null-prototype object, or an entry whose `id`
+ * is not a string that shows something (empty, whitespace-only and
+ * invisible-only ids are rejected), `maxAgeDays` is not a number, or `now` is
+ * not a `Date`. A claim with no `id` is rejected
  * rather than included with a blank/`undefined` label: `id` is how
  * `formatClaimsReportAsText` and a caller's own tracking name "this specific
  * claim" again later, and a claim this library can never point back to isn't
