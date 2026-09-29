@@ -67,9 +67,6 @@ function computeAge(verifiedAt: unknown, nowMs: number): Age {
  *   shape — see `Claim`'s doc comment.
  */
 function hasEvidence(evidenceRef: unknown): boolean {
-  if (evidenceRef == null) return false;
-  if (typeof evidenceRef === 'string') return !isVisiblyBlank(evidenceRef);
-
   const stack: unknown[] = [evidenceRef];
   const visitedArrays = new Set<unknown[]>();
   while (stack.length > 0) {
