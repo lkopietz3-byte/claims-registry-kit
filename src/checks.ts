@@ -1,5 +1,5 @@
 import { parseIsoInstant } from './dates.js';
-import { isVisiblyBlank } from './text.js';
+import { displayValue, isVisiblyBlank } from './text.js';
 import type { Claim, ClaimStatus, EvaluatedClaim } from './types.js';
 import { assertClaimId, assertClaimList, assertClaimObject, assertMaxAgeDays, assertNow } from './validate.js';
 
@@ -282,39 +282,63 @@ export function generateClaimsReport<EvidenceRef = string>(
 }
 
 /**
- * Render a `ClaimsReport` as plain, readable text — good enough to paste
- * into a CI job summary or print during a manual review pass. Optional
+ * Render a `ClaimsReport` as plain, readable text: a heading, a counts line,
+ * then one line per stale claim and one per unverified claim. Good enough to
+ * paste into a CI job summary or print during a manual review pass. Optional
  * convenience; the report object itself has everything a caller needs to
  * build their own formatting.
+ *
+ * Claim ids, claim text and the other report fields are caller-supplied
+ * strings, so every one of them is escaped before it is printed: each
+ * control character (C0, DEL and C1, including CR, LF and ESC), line or
+ * paragraph separator (U+2028, U+2029) and bidi formatting character
+ * (U+061C, U+200E, U+200F, U+202A-202E, U+2066-2069) becomes a visible
+ * escape such as `\u001b` (four lowercase hex digits). A newline in a claim
+ * therefore cannot start a fake heading or section, an ESC byte cannot reach
+ * a terminal, and a right-to-left override cannot reorder the text around
+ * it. Visible text in any script, emoji and backslashes are left as they
+ * are, and nothing is truncated. The escaping is for display only: it is not
+ * reversible (text that literally contains the six characters `\u001b` reads
+ * the same as text containing ESC) and the `report` object you passed in is
+ * never modified: read `id` and `text` from it, not from this string, for
+ * anything other than showing to a person.
+ *
+ * A non-string `id` or `text` in a hand-built report prints as itself
+ * (numbers, booleans, `null`, `undefined`) or by kind (`an object`,
+ * `a symbol`); the formatter never calls a value's own `toString`.
+ * Each claim's fields are read once. The text has no trailing newline.
  */
 export function formatClaimsReportAsText<EvidenceRef = string>(
   report: ClaimsReport<EvidenceRef>,
 ): string {
+  const { generatedAt, maxAgeDays, counts, stale, unverified } = report;
   const lines: string[] = [];
   lines.push(
-    `Claims report — generated ${report.generatedAt} (maxAgeDays: ${report.maxAgeDays})`,
+    `Claims report — generated ${displayValue(generatedAt)} (maxAgeDays: ${displayValue(maxAgeDays)})`,
   );
   lines.push(
-    `  current: ${report.counts.current}  stale: ${report.counts.stale}  unverified: ${report.counts.unverified}  total: ${report.counts.total}`,
+    `  current: ${displayValue(counts.current)}  stale: ${displayValue(counts.stale)}  unverified: ${displayValue(counts.unverified)}  total: ${displayValue(counts.total)}`,
   );
 
-  if (report.stale.length > 0) {
+  if (stale.length > 0) {
     lines.push('');
     lines.push('Stale claims (evidence linked, but review is overdue):');
-    for (const claim of report.stale) {
+    for (const claim of stale) {
+      const { id, text, ageDays } = claim;
       let age: string;
-      if (claim.ageDays === null) age = 'unparseable verifiedAt';
-      else if (claim.ageDays < 0) age = 'verifiedAt is in the future';
-      else age = `${claim.ageDays}d old`;
-      lines.push(`  [${claim.id}] "${claim.text}" — ${age}`);
+      if (ageDays === null) age = 'unparseable verifiedAt';
+      else if (ageDays < 0) age = 'verifiedAt is in the future';
+      else age = `${displayValue(ageDays)}d old`;
+      lines.push(`  [${displayValue(id)}] "${displayValue(text)}" — ${age}`);
     }
   }
 
-  if (report.unverified.length > 0) {
+  if (unverified.length > 0) {
     lines.push('');
     lines.push('Unverified claims (no evidenceRef):');
-    for (const claim of report.unverified) {
-      lines.push(`  [${claim.id}] "${claim.text}"`);
+    for (const claim of unverified) {
+      const { id, text } = claim;
+      lines.push(`  [${displayValue(id)}] "${displayValue(text)}"`);
     }
   }
 
