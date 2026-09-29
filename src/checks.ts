@@ -1,4 +1,5 @@
 import { parseIsoInstant } from './dates.js';
+import { isVisiblyBlank } from './text.js';
 import type { Claim, ClaimStatus, EvaluatedClaim } from './types.js';
 import { assertClaimId, assertClaimList, assertClaimObject, assertMaxAgeDays, assertNow } from './validate.js';
 
@@ -38,26 +39,18 @@ function computeAge(verifiedAt: unknown, now: Date): Age {
   return { ageDays: Math.max(0, Math.floor(elapsedMs / MS_PER_DAY)), usable: true };
 }
 
-// Invisible-but-not-whitespace characters that a reader would still see as a
-// blank string: zero-width space/joiners, word joiner, soft hyphen, bidi
-// controls, and C0/DEL. JS's built-in `\s` already covers ordinary
-// whitespace, NBSP, and the BOM, so those don't need to be listed here.
-// eslint-disable-next-line no-control-regex -- matching control characters (\u0000-\u001f, \u007f) is the point
-const INVISIBLE_CHARS = /[\u0000-\u001f\u007f\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064]/gu;
-
-function isBlankString(value: string): boolean {
-  return value.replace(INVISIBLE_CHARS, '').trim().length === 0;
-}
-
 /**
  * Purely structural presence check — does this evidenceRef contain anything
  * at all?
  *
- * - A string is "present" if, once whitespace and invisible formatting
- *   characters (zero-width spaces, bidi marks, control characters, ...) are
- *   stripped, anything is left. `'TODO'` and `'n/a'` count as present —
- *   this function cannot tell a placeholder from a real reference, only
- *   whether one was typed.
+ * - A string is "present" unless it is blank: empty, or made only of
+ *   whitespace, `Default_Ignorable_Code_Point` characters (zero-width
+ *   spaces and joiners, the soft hyphen, every bidi control including
+ *   U+061C and the isolates U+2066-2069, variation selectors, Hangul
+ *   fillers, ...) and control characters. Visible text in any script,
+ *   emoji, and visible text wrapped in bidi controls all count as present.
+ *   `'TODO'` and `'n/a'` also count as present — this function cannot tell
+ *   a placeholder from a real reference, only whether one was typed.
  * - An array is "present" if at least one of its elements is, checked
  *   recursively (a list of evidence refs, or a list of lists). Repeated or
  *   cyclic sub-arrays are each visited only once, so this always terminates
@@ -68,7 +61,7 @@ function isBlankString(value: string): boolean {
  */
 function hasEvidence(evidenceRef: unknown): boolean {
   if (evidenceRef == null) return false;
-  if (typeof evidenceRef === 'string') return !isBlankString(evidenceRef);
+  if (typeof evidenceRef === 'string') return !isVisiblyBlank(evidenceRef);
   if (!Array.isArray(evidenceRef)) return true;
 
   const stack: unknown[] = [evidenceRef];
@@ -77,7 +70,7 @@ function hasEvidence(evidenceRef: unknown): boolean {
     const item = stack.pop();
     if (item == null) continue;
     if (typeof item === 'string') {
-      if (!isBlankString(item)) return true;
+      if (!isVisiblyBlank(item)) return true;
       continue;
     }
     if (!Array.isArray(item)) return true;
