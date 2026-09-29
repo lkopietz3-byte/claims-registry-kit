@@ -1,6 +1,6 @@
 {
   "name": "claims-registry-kit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A dependency-free TypeScript library for tracking public claims, their evidence references, and their review freshness.",
   "keywords": [
     "product-claims",
