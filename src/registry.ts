@@ -1,5 +1,6 @@
 import type { Claim } from './types.js';
-import { assertClaimId, assertClaimObject } from './validate.js';
+import { escapeForDisplay } from './text.js';
+import { assertClaimId, snapshotClaim } from './validate.js';
 
 /**
  * A minimal in-memory registry for Claims.
@@ -46,17 +47,17 @@ export function createClaimsRegistry<EvidenceRef = string>(): ClaimsRegistry<Evi
 
   return {
     registerClaim(claim) {
-      assertClaimObject(claim, 'claim');
-      assertClaimId(claim.id, 'claim');
-      if (claims.has(claim.id)) {
+      // One copy, taken once: the id checked, the key stored under and the id
+      // inside the stored claim are the same value, even if the caller passed
+      // a getter or mutates the original afterward. The copy is shallow.
+      const copy = snapshotClaim<EvidenceRef>(claim, 'claim');
+      assertClaimId(copy.id, 'claim');
+      if (claims.has(copy.id)) {
         throw new Error(
-          `claims-registry-kit: a claim with id "${claim.id}" is already registered`,
+          `claims-registry-kit: a claim with id "${escapeForDisplay(copy.id)}" is already registered`,
         );
       }
-      // Store a shallow copy: the caller mutating their original object after
-      // registering it (including its `id`) must not reach the stored claim,
-      // or the duplicate-id check above becomes unenforceable after the fact.
-      claims.set(claim.id, { ...claim });
+      claims.set(copy.id, copy);
     },
     getClaims() {
       // Shallow-copy on the way out too, so mutating a returned claim can't

@@ -1,7 +1,13 @@
 import { parseIsoInstant } from './dates.js';
 import { displayValue, isVisiblyBlank } from './text.js';
 import type { Claim, ClaimStatus, EvaluatedClaim } from './types.js';
-import { assertClaimId, assertClaimList, assertClaimObject, assertMaxAgeDays, assertNow } from './validate.js';
+import {
+  assertClaimId,
+  assertMaxAgeDays,
+  readNow,
+  snapshotClaim,
+  snapshotClaimList,
+} from './validate.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -27,11 +33,11 @@ interface Age {
   usable: boolean;
 }
 
-function computeAge(verifiedAt: unknown, now: Date): Age {
+function computeAge(verifiedAt: unknown, nowMs: number): Age {
   const parsed = parseIsoInstant(verifiedAt);
   if (parsed === null) return { ageDays: null, usable: false };
   const tolerance = parsed.dateOnly ? MAX_BARE_DATE_FUTURE_TOLERANCE_MS : 0;
-  const elapsedMs = now.getTime() - parsed.instant;
+  const elapsedMs = nowMs - parsed.instant;
   if (elapsedMs < -tolerance) {
     return { ageDays: Math.floor(elapsedMs / MS_PER_DAY), usable: false };
   }
@@ -114,19 +120,23 @@ export function evaluateClaim<EvidenceRef = string>(
   maxAgeDays: number,
   now: Date = new Date(),
 ): EvaluatedClaim<EvidenceRef> {
-  assertClaimObject(claim, 'claim');
+  const snapshot = snapshotClaim<EvidenceRef>(claim, 'claim');
   assertMaxAgeDays(maxAgeDays);
-  assertNow(now);
-  return evaluate(claim, maxAgeDays, now);
+  const nowMs = readNow(now);
+  return evaluate(snapshot, maxAgeDays, nowMs);
 }
 
-/** The single place a status is decided. Callers have already validated their arguments. */
+/**
+ * The single place a status is decided. Callers have already validated their
+ * arguments and pass a one-time copy of the claim, so the fields judged here
+ * are the fields returned.
+ */
 function evaluate<EvidenceRef>(
   claim: Claim<EvidenceRef>,
   maxAgeDays: number,
-  now: Date,
+  nowMs: number,
 ): EvaluatedClaim<EvidenceRef> {
-  const { ageDays, usable } = computeAge(claim.verifiedAt, now);
+  const { ageDays, usable } = computeAge(claim.verifiedAt, nowMs);
 
   let status: ClaimStatus;
   if (!hasEvidence(claim.evidenceRef)) {
@@ -161,11 +171,11 @@ export function checkStaleness<EvidenceRef = string>(
   maxAgeDays: number,
   now: Date = new Date(),
 ): EvaluatedClaim<EvidenceRef>[] {
-  assertClaimList(claims);
+  const list = snapshotClaimList<EvidenceRef>(claims);
   assertMaxAgeDays(maxAgeDays);
-  assertNow(now);
-  return claims
-    .map((claim) => evaluate(claim, maxAgeDays, now))
+  const nowMs = readNow(now);
+  return list
+    .map((claim) => evaluate(claim, maxAgeDays, nowMs))
     .filter((evaluated) => evaluated.status === 'stale');
 }
 
@@ -200,12 +210,12 @@ export function checkEvidenceLinked<EvidenceRef = string>(
   claims: readonly Claim<EvidenceRef>[],
   now: Date = new Date(),
 ): EvaluatedClaim<EvidenceRef>[] {
-  assertClaimList(claims);
-  assertNow(now);
+  const list = snapshotClaimList<EvidenceRef>(claims);
+  const nowMs = readNow(now);
   // The policy is irrelevant here (evidence presence outranks age), so an
   // unlimited one keeps this on the same code path as every other entry point.
-  return claims
-    .map((claim) => evaluate(claim, Number.POSITIVE_INFINITY, now))
+  return list
+    .map((claim) => evaluate(claim, Number.POSITIVE_INFINITY, nowMs))
     .filter((evaluated) => evaluated.status === 'unverified');
 }
 
@@ -254,20 +264,20 @@ export function generateClaimsReport<EvidenceRef = string>(
   maxAgeDays: number,
   now: Date = new Date(),
 ): ClaimsReport<EvidenceRef> {
-  assertClaimList(claims);
-  claims.forEach((claim, i) => {
-    assertClaimId(claim.id, `claims[${String(i)}]`);
-  });
+  const list = snapshotClaimList<EvidenceRef>(claims);
+  for (let i = 0; i < list.length; i += 1) {
+    assertClaimId(list[i]?.id, `claims[${String(i)}]`);
+  }
   assertMaxAgeDays(maxAgeDays);
-  assertNow(now);
-  const evaluated = claims.map((claim) => evaluate(claim, maxAgeDays, now));
+  const nowMs = readNow(now);
+  const evaluated = list.map((claim) => evaluate(claim, maxAgeDays, nowMs));
 
   const current = evaluated.filter((c) => c.status === 'current');
   const stale = evaluated.filter((c) => c.status === 'stale');
   const unverified = evaluated.filter((c) => c.status === 'unverified');
 
   return {
-    generatedAt: now.toISOString(),
+    generatedAt: new Date(nowMs).toISOString(),
     maxAgeDays,
     counts: {
       current: current.length,
