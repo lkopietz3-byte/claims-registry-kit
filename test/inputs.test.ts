@@ -346,3 +346,76 @@ describe('the registry copy is shallow (CRK-F03)', () => {
     expect(registry.getClaim('c1')?.evidenceRef).toEqual(['docs/a.md']);
   });
 });
+
+describe('error messages carry the library prefix and say what was received', () => {
+  const prefix = 'claims-registry-kit: ';
+  const messageOf = (fn: () => unknown): string => {
+    try {
+      fn();
+    } catch (error) {
+      return (error as Error).message;
+    }
+    return '(did not throw)';
+  };
+
+  it('every validation error starts with the package name', () => {
+    const revoked = Proxy.revocable({}, {});
+    revoked.revoke();
+    const messages = [
+      messageOf(() => evaluateClaim(claim(), 'x' as unknown as number, NOW)),
+      messageOf(() => evaluateClaim(claim(), -1, NOW)),
+      messageOf(() => evaluateClaim(claim(), 90, 'x' as unknown as Date)),
+      messageOf(() => evaluateClaim(claim(), 90, new Date(Number.NaN))),
+      messageOf(() => evaluateClaim(null as unknown as Claim, 90, NOW)),
+      messageOf(() => checkStaleness('x' as unknown as Claim[], 90, NOW)),
+      messageOf(() => generateClaimsReport([claim({ id: '' })], 90, NOW)),
+      messageOf(() => generateClaimsReport([claim({ id: '\u200b' })], 90, NOW)),
+      messageOf(() => createClaimsRegistry().registerClaim(null as unknown as Claim)),
+      messageOf(() => evaluateClaim(revoked.proxy as unknown as Claim, 90, NOW)),
+    ];
+    for (const message of messages) expect(message.startsWith(prefix)).toBe(true);
+  });
+
+  it('names a numeric, null or object id by what it is', () => {
+    const idMessage = (id: unknown): string =>
+      messageOf(() => generateClaimsReport([looseClaim({ id })], 90, NOW));
+    expect(idMessage(42)).toBe(`${prefix}claims[0].id must be a non-empty string (received 42)`);
+    expect(idMessage(null)).toBe(`${prefix}claims[0].id must be a non-empty string (received null)`);
+    expect(idMessage(undefined)).toBe(`${prefix}claims[0].id must be a non-empty string (received undefined)`);
+    expect(idMessage([])).toBe(`${prefix}claims[0].id must be a non-empty string (received an array)`);
+    expect(idMessage({})).toBe(`${prefix}claims[0].id must be a non-empty string (received an object)`);
+    expect(idMessage(new Map())).toBe(`${prefix}claims[0].id must be a non-empty string (received a non-plain object)`);
+    expect(idMessage('')).toBe(
+      `${prefix}claims[0].id must be a non-empty string (received a blank string: empty, whitespace or invisible characters only)`,
+    );
+  });
+
+  it('names a claim by its label and says what was received', () => {
+    expect(messageOf(() => createClaimsRegistry().registerClaim(null as unknown as Claim))).toBe(
+      `${prefix}claim must be an object (a plain or null-prototype object; received null)`,
+    );
+    expect(messageOf(() => checkStaleness([claim(), 5 as unknown as Claim], 90, NOW))).toBe(
+      `${prefix}claims[1] must be an object (a plain or null-prototype object; received 5)`,
+    );
+    const revoked = Proxy.revocable({}, {});
+    revoked.revoke();
+    expect(messageOf(() => evaluateClaim(revoked.proxy as unknown as Claim, 90, NOW))).toBe(
+      `${prefix}claim must be an object (a plain or null-prototype object; received an object)`,
+    );
+  });
+
+  it('names the argument for a bad maxAgeDays and now', () => {
+    expect(messageOf(() => evaluateClaim(claim(), 'x' as unknown as number, NOW))).toBe(
+      `${prefix}maxAgeDays must be a number (received string)`,
+    );
+    expect(messageOf(() => evaluateClaim(claim(), Number.NaN, NOW))).toBe(
+      `${prefix}maxAgeDays must be a finite number >= 0 (received NaN)`,
+    );
+    expect(messageOf(() => evaluateClaim(claim(), 90, {} as unknown as Date))).toBe(
+      `${prefix}now must be a Date (received an object)`,
+    );
+    expect(messageOf(() => evaluateClaim(claim(), 90, new Date(Number.NaN)))).toBe(
+      `${prefix}now must be a valid Date (received an Invalid Date)`,
+    );
+  });
+});

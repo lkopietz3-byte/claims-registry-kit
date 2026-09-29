@@ -69,7 +69,6 @@ function computeAge(verifiedAt: unknown, nowMs: number): Age {
 function hasEvidence(evidenceRef: unknown): boolean {
   if (evidenceRef == null) return false;
   if (typeof evidenceRef === 'string') return !isVisiblyBlank(evidenceRef);
-  if (!Array.isArray(evidenceRef)) return true;
 
   const stack: unknown[] = [evidenceRef];
   const visitedArrays = new Set<unknown[]>();
@@ -281,9 +280,9 @@ export function generateClaimsReport<EvidenceRef = string>(
   now: Date = new Date(),
 ): ClaimsReport<EvidenceRef> {
   const list = snapshotClaimList<EvidenceRef>(claims);
-  for (let i = 0; i < list.length; i += 1) {
-    assertClaimId(list[i]?.id, `claims[${String(i)}]`);
-  }
+  list.forEach((claim, i) => {
+    assertClaimId(claim.id, `claims[${String(i)}]`);
+  });
   assertMaxAgeDays(maxAgeDays);
   const nowMs = readNow(now);
   const evaluated = list.map((claim) => evaluate(claim, maxAgeDays, nowMs));

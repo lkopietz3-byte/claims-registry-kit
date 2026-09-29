@@ -321,3 +321,17 @@ describe('a hand-built report cannot make the formatter throw or lie', () => {
     expect(out).toContain('[g] "t" — 5d old');
   });
 });
+
+describe('the age wording at its boundaries', () => {
+  it('a hand-built stale claim with age zero is "0d old", and a negative age is "in the future"', () => {
+    const at = (ageDays: number): string =>
+      formatClaimsReportAsText({
+        ...unverifiedReport({}),
+        unverified: [],
+        stale: [{ ...claim(), status: 'stale', ageDays }],
+      });
+    expect(at(0)).toContain('[c1] "Changes sync across your team in real time" — 0d old');
+    expect(at(1)).toContain('— 1d old');
+    expect(at(-1)).toContain('— verifiedAt is in the future');
+  });
+});
