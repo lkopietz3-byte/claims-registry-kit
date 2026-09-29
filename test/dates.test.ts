@@ -186,3 +186,39 @@ describe('age is computed in elapsed 24-hour periods, so time zone and DST do no
     expect(withTimeZone('America/New_York', () => ageOf('2026-11-01T00:00:00Z', new Date('2026-11-01T23:59:59.999Z')))).toBe(0);
   });
 });
+
+// Boundary cases that pin the exact arithmetic (fraction padding, offset
+// minutes, the offset limits) rather than just "some age comes back".
+describe('verifiedAt: exact arithmetic', () => {
+  it.each([
+    // One digit means tenths, two mean hundredths: .5 is 500 ms, .25 is 250 ms, .05 is 50 ms.
+    ['.5 is 500 ms', '2026-08-01T00:00:00.5Z', '2026-08-02T00:00:00.400Z', 0],
+    ['.5 is 500 ms (age 1 once 500 ms have passed)', '2026-08-01T00:00:00.5Z', '2026-08-02T00:00:00.500Z', 1],
+    ['.25 is 250 ms', '2026-08-01T00:00:00.25Z', '2026-08-02T00:00:00.200Z', 0],
+    ['.05 is 50 ms', '2026-08-01T00:00:00.05Z', '2026-08-02T00:00:00.040Z', 0],
+    ['.123456789 keeps only the first three digits', '2026-08-01T00:00:00.123456789Z', '2026-08-02T00:00:00.122Z', 0],
+    ['.123456789 keeps only the first three digits (boundary)', '2026-08-01T00:00:00.123456789Z', '2026-08-02T00:00:00.123Z', 1],
+  ])('fraction: %s', (_label, verifiedAt, now, expected) => {
+    expect(ageOf(verifiedAt, new Date(now))).toBe(expected);
+  });
+
+  it.each([
+    // Each of these is exactly 2026-08-01T00:00:00Z, one day before NOW.
+    ['+05:30', '2026-08-01T05:30:00+05:30'],
+    ['-03:30', '2026-07-31T20:30:00-03:30'],
+    ['+23:00 (the largest whole-hour offset)', '2026-08-01T23:00:00+23:00'],
+    ['+00:59 (the largest minute offset)', '2026-08-01T00:59:00+00:59'],
+    ['+23:59 (the largest offset)', '2026-08-01T23:59:00+23:59'],
+    ['-23:59', '2026-07-31T00:01:00-23:59'],
+  ])('offset %s names the exact instant', (_label, verifiedAt) => {
+    expect(ageOf(verifiedAt)).toBe(1);
+    expect(ageOf(verifiedAt, new Date('2026-08-01T23:59:59.999Z'))).toBe(0);
+  });
+
+  it.each(['2026-08-01T00:00:00+23:60', '2026-08-01T00:00:00-24:00', '2026-08-01T00:00:00+99'])(
+    'offset in %s is not a real offset',
+    (verifiedAt) => {
+      expect(ageOf(verifiedAt)).toBeNull();
+    },
+  );
+});

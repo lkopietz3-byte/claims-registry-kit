@@ -5,6 +5,90 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-28
+
+Minor release: some inputs that used to be accepted now throw or get a
+different status, and the text from `formatClaimsReportAsText` is different
+for claims that contain control or bidi characters. The exports, the report
+shape and the status rules are unchanged.
+
+### Changed (breaking)
+
+- **A reference that shows nothing is now `'unverified'` (CRK-F01).** Blank
+  used to be a hand-written list of characters that missed U+061C (Arabic
+  letter mark) and the isolate controls U+2066-2069, so an `evidenceRef` made
+  only of those came back `'current'` with a fresh date. Blank now means only
+  whitespace, control characters (C0, DEL and C1) and
+  `Default_Ignorable_Code_Point` characters, which also adds variation
+  selectors on their own (U+FE00-FE0F), the Hangul fillers (U+115F, U+1160,
+  U+3164, U+FFA0), U+034F and U+180B-180F. Visible Arabic, Japanese, emoji and
+  bidi-wrapped visible text stay present. Stored references are never altered.
+- **`formatClaimsReportAsText` escapes what it prints (CRK-F02).** Control
+  characters (C0, DEL, C1, including CR, LF and ESC), U+2028, U+2029 and bidi
+  formatting characters (U+061C, U+200E, U+200F, U+202A-202E, U+2066-2069) in
+  ids, claim text and the other printed fields become visible escapes such as
+  `\u001b`. A newline in a claim can no longer forge a second report heading
+  and an ESC byte no longer reaches the terminal. Visible text is unchanged,
+  nothing is truncated, and the report object stays raw. String ids and text
+  with no such characters print exactly as before.
+- **A claim must be a plain object.** A `Map`, `Set`, `Date`, `RegExp`, array
+  or class instance (or a boxed primitive) passed as a claim now throws a
+  `TypeError` in `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked`,
+  `generateClaimsReport` and `registerClaim`. Before, it was spread into an
+  empty claim and reported as missing evidence or a bad date. Plain objects,
+  null-prototype objects and plain objects from another realm are accepted.
+- **A claim `id` that shows nothing is rejected.** `generateClaimsReport` and
+  `registerClaim` now throw a `TypeError` for an id made only of whitespace,
+  control characters or invisible characters (a zero-width space, an isolate),
+  not just an empty or whitespace-only one.
+- **`now` must be a real `Date`.** It is read through the `Date` intrinsics: a
+  `Date` subclass and a `Date` from another realm work, but an object that only
+  fakes `Symbol.toStringTag` is now a `TypeError`.
+- The duplicate-id error from `registerClaim` prints the id with control
+  characters escaped, and the `TypeError` messages for a non-plain claim and a
+  blank id say what was received. Error types are unchanged.
+
+### Fixed
+
+- **Caller input is read once.** Each claim, the `claims` array and `now` are
+  copied or read a single time and every check, status decision and returned
+  object uses that copy. Before, a getter could pass the evidence check with
+  one `evidenceRef` and return another, `registerClaim` could store a claim
+  under a key that differs from its own `id`, and a Proxy array could be
+  validated with one entry and processed with another.
+- A hole in `claims` is refused by the same single indexed pass that produces
+  the dense copy the functions then use.
+- Error messages never call into the offending value (`toString`, `toJSON`,
+  getters) and cope with a revoked Proxy.
+
+### Docs
+
+- README: an ESM and CommonJS compatibility table (`require()` works on Node
+  20.19+ and 22.12+), Node support consistent with ENGINEERING (22 and 24 LTS
+  recommended, 26 current, 20 is end-of-life and compatibility-tested only),
+  and a pinned clock in the example so its output does not drift.
+- README and TSDoc: the registry's copy is shallow (a nested `evidenceRef`
+  array or object is shared); duplicate ids are only caught by the registry;
+  what the text escaping does and does not cover.
+- README: corrected the sibling-kit statements. `freshness-kit` shares the
+  time-zone and future-date thresholds but throws a `RangeError` where this
+  library reports `'stale'`, and its date grammar is stricter. `grounding-kit`
+  is described as a citation-marker checker, not a verifier for these claims.
+- TSDoc for `createClaimsRegistry`; `PROJECT_CONTEXT.md`'s purpose line no
+  longer says "unsupported" claims are flagged (it flags missing references
+  and overdue reviews, not unsupported claims).
+- Tests: `formatClaimsReportAsText`, the read-once and plain-object rules, and
+  blank ids and references are covered; a nested non-string evidence item now
+  has a test.
+
+### CI
+
+- `verify.yml`: the compatibility job also runs Node 20.19.0 and 22.12.0
+  (the exact `require(esm)` floors) with the tests and `verify-package.mjs`.
+- `release.yml`: runs `audit:dependencies`, `verify` and `attw`; both triggers
+  must run on a `v*` tag that matches `package.json`; only a confirmed E404
+  counts as "not published" and any other registry error fails the job.
+
 ## [0.2.0] - 2026-09-27
 
 ### Changed (breaking)

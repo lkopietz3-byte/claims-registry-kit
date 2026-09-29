@@ -4,14 +4,32 @@
 // through into date math. `x > NaN` is false, so an unchecked NaN policy or an
 // Invalid Date clock would classify every claim as 'current': a review gate
 // that fails open.
+//
+// The second rule: read caller input ONCE. A getter, a Proxy or a sparse array
+// can answer differently the second time it is asked, so a claim or a claims
+// list is copied a single time (`snapshotClaim`, `snapshotClaimList`) and every
+// later check, computation and returned object uses that copy.
+
+import type { Claim } from './types.js';
+import { isVisiblyBlank } from './text.js';
 
 const PREFIX = 'claims-registry-kit: ';
 
+/**
+ * Name a received value for an error message. Never calls into the value
+ * (no `toString`, `toJSON` or getters), so a hostile value cannot break or
+ * change the error that reports it.
+ */
 function describe(value: unknown): string {
   if (typeof value === 'number') return String(value);
   if (value === null) return 'null';
-  if (Array.isArray(value)) return 'an array';
-  return typeof value;
+  if (typeof value !== 'object') return typeof value;
+  try {
+    if (Array.isArray(value)) return 'an array';
+  } catch {
+    return 'an object'; // a revoked proxy makes Array.isArray throw
+  }
+  return isPlainObject(value) ? 'an object' : 'a non-plain object';
 }
 
 /** `maxAgeDays` must be a finite number >= 0. */
@@ -26,26 +44,77 @@ export function assertMaxAgeDays(value: unknown): asserts value is number {
   }
 }
 
-/** `now` must be a valid Date instance (an Invalid Date is rejected). */
-export function assertNow(value: unknown): asserts value is Date {
-  if (Object.prototype.toString.call(value) !== '[object Date]') {
+/**
+ * Read `now` once, through the `Date` intrinsics, and return epoch
+ * milliseconds. A Date subclass that overrides `getTime`, an object that
+ * fakes `Symbol.toStringTag`, or a Date-like from anywhere else cannot change
+ * the answer between reads: only a real Date (including one from another
+ * realm) is accepted, and an Invalid Date is rejected.
+ */
+export function readNow(value: unknown): number {
+  let ms: number;
+  try {
+    ms = Date.prototype.getTime.call(value);
+  } catch {
     throw new TypeError(`${PREFIX}now must be a Date (received ${describe(value)})`);
   }
-  if (Number.isNaN((value as Date).getTime())) {
+  if (Number.isNaN(ms)) {
     throw new RangeError(`${PREFIX}now must be a valid Date (received an Invalid Date)`);
   }
+  return ms;
 }
 
-/** A single claim must be a non-null object. `label` names it in the message. */
-export function assertClaimObject(value: unknown, label: string): asserts value is object {
-  if (value === null || typeof value !== 'object') {
-    throw new TypeError(`${PREFIX}${label} must be an object (received ${describe(value)})`);
+/** A plain object or a null-prototype object: not an array, Map, Set, Date, RegExp or class instance. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  try {
+    if (typeof value !== 'object' || value === null) return false;
+    const proto: unknown = Object.getPrototypeOf(value);
+    // `Object.getPrototypeOf(proto) === null` also accepts Object.prototype
+    // from another realm, whose identity differs from ours.
+    return proto === null || Object.getPrototypeOf(proto) === null;
+  } catch {
+    return false; // a revoked proxy throws here
   }
 }
 
 /**
- * A claim's `id` must be a non-empty (after trimming) string. `label` names
- * the offending claim in the message.
+ * Copy one claim, once. It must be a plain or null-prototype object: a Map,
+ * Date, array or class instance would otherwise be spread into `{}` and read
+ * as a claim with no fields. `label` names it in the message.
+ */
+export function snapshotClaim<EvidenceRef>(value: unknown, label: string): Claim<EvidenceRef> {
+  if (!isPlainObject(value)) {
+    throw new TypeError(
+      `${PREFIX}${label} must be an object (a plain or null-prototype object; received ${describe(value)})`,
+    );
+  }
+  return { ...value } as unknown as Claim<EvidenceRef>;
+}
+
+/**
+ * Copy a claims list in ONE indexed pass, refusing a non-array, a hole and any
+ * entry that is not a plain claim object. Validation and later processing
+ * both use the returned dense copy, so a sparse array (skipped by `map`,
+ * visited by `for...of`) or a Proxy cannot be validated one way and processed
+ * another. Each entry and the length are read exactly once.
+ */
+export function snapshotClaimList<EvidenceRef>(value: unknown): Claim<EvidenceRef>[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${PREFIX}claims must be an array (received ${describe(value)})`);
+  }
+  const length = (value as unknown[]).length;
+  const copy: Claim<EvidenceRef>[] = [];
+  for (let i = 0; i < length; i += 1) {
+    copy.push(snapshotClaim<EvidenceRef>((value as unknown[])[i], `claims[${String(i)}]`));
+  }
+  return copy;
+}
+
+/**
+ * A claim's `id` must be a string that shows something: not empty, not
+ * whitespace only, and not made only of invisible characters (zero-width
+ * spaces, bidi controls, ...). `label` names the offending claim in the
+ * message.
  *
  * `id` is how a caller finds "the same claim" again across runs (the
  * registry's duplicate-detection key, and what a report's text output names
@@ -55,17 +124,14 @@ export function assertClaimObject(value: unknown, label: string): asserts value 
  * `undefined` label.
  */
 export function assertClaimId(value: unknown, label: string): asserts value is string {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new TypeError(`${PREFIX}${label}.id must be a non-empty string (received ${describe(value)})`);
+  if (typeof value !== 'string') {
+    throw new TypeError(
+      `${PREFIX}${label}.id must be a non-empty string (received ${describe(value)})`,
+    );
   }
-}
-
-/** `claims` must be an array whose every entry (holes included) is a claim object. */
-export function assertClaimList(value: unknown): asserts value is readonly object[] {
-  if (!Array.isArray(value)) {
-    throw new TypeError(`${PREFIX}claims must be an array (received ${describe(value)})`);
-  }
-  for (let i = 0; i < value.length; i += 1) {
-    assertClaimObject(value[i], `claims[${String(i)}]`);
+  if (isVisiblyBlank(value)) {
+    throw new TypeError(
+      `${PREFIX}${label}.id must be a non-empty string (received a blank string: empty, whitespace or invisible characters only)`,
+    );
   }
 }

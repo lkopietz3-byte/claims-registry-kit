@@ -1,6 +1,13 @@
 import { parseIsoInstant } from './dates.js';
+import { displayValue, isVisiblyBlank } from './text.js';
 import type { Claim, ClaimStatus, EvaluatedClaim } from './types.js';
-import { assertClaimId, assertClaimList, assertClaimObject, assertMaxAgeDays, assertNow } from './validate.js';
+import {
+  assertClaimId,
+  assertMaxAgeDays,
+  readNow,
+  snapshotClaim,
+  snapshotClaimList,
+} from './validate.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -10,8 +17,9 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * a typo. UTC+14:00 (for example Pacific/Kiritimati) is the furthest-ahead
  * civil time zone in the IANA database, so a bare date is already "today"
  * somewhere on Earth up to 14 hours before UTC agrees. This matches
- * freshness-kit's bare-date rule (see its README's "Relationship to
- * claims-registry-kit" section).
+ * freshness-kit's bare-date threshold (see its README's "Input contract and
+ * migration" section). The two differ in what happens past it: freshness-kit
+ * throws a RangeError, this library reports the claim 'stale'.
  *
  * An explicit timestamp (anything with a time component, offset or not)
  * names an exact instant and gets none of this grace: even one millisecond
@@ -26,11 +34,11 @@ interface Age {
   usable: boolean;
 }
 
-function computeAge(verifiedAt: unknown, now: Date): Age {
+function computeAge(verifiedAt: unknown, nowMs: number): Age {
   const parsed = parseIsoInstant(verifiedAt);
   if (parsed === null) return { ageDays: null, usable: false };
   const tolerance = parsed.dateOnly ? MAX_BARE_DATE_FUTURE_TOLERANCE_MS : 0;
-  const elapsedMs = now.getTime() - parsed.instant;
+  const elapsedMs = nowMs - parsed.instant;
   if (elapsedMs < -tolerance) {
     return { ageDays: Math.floor(elapsedMs / MS_PER_DAY), usable: false };
   }
@@ -38,26 +46,18 @@ function computeAge(verifiedAt: unknown, now: Date): Age {
   return { ageDays: Math.max(0, Math.floor(elapsedMs / MS_PER_DAY)), usable: true };
 }
 
-// Invisible-but-not-whitespace characters that a reader would still see as a
-// blank string: zero-width space/joiners, word joiner, soft hyphen, bidi
-// controls, and C0/DEL. JS's built-in `\s` already covers ordinary
-// whitespace, NBSP, and the BOM, so those don't need to be listed here.
-// eslint-disable-next-line no-control-regex -- matching control characters (\u0000-\u001f, \u007f) is the point
-const INVISIBLE_CHARS = /[\u0000-\u001f\u007f\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064]/gu;
-
-function isBlankString(value: string): boolean {
-  return value.replace(INVISIBLE_CHARS, '').trim().length === 0;
-}
-
 /**
  * Purely structural presence check — does this evidenceRef contain anything
  * at all?
  *
- * - A string is "present" if, once whitespace and invisible formatting
- *   characters (zero-width spaces, bidi marks, control characters, ...) are
- *   stripped, anything is left. `'TODO'` and `'n/a'` count as present —
- *   this function cannot tell a placeholder from a real reference, only
- *   whether one was typed.
+ * - A string is "present" unless it is blank: empty, or made only of
+ *   whitespace, `Default_Ignorable_Code_Point` characters (zero-width
+ *   spaces and joiners, the soft hyphen, every bidi control including
+ *   U+061C and the isolates U+2066-2069, variation selectors, Hangul
+ *   fillers, ...) and control characters. Visible text in any script,
+ *   emoji, and visible text wrapped in bidi controls all count as present.
+ *   `'TODO'` and `'n/a'` also count as present — this function cannot tell
+ *   a placeholder from a real reference, only whether one was typed.
  * - An array is "present" if at least one of its elements is, checked
  *   recursively (a list of evidence refs, or a list of lists). Repeated or
  *   cyclic sub-arrays are each visited only once, so this always terminates
@@ -67,17 +67,13 @@ function isBlankString(value: string): boolean {
  *   shape — see `Claim`'s doc comment.
  */
 function hasEvidence(evidenceRef: unknown): boolean {
-  if (evidenceRef == null) return false;
-  if (typeof evidenceRef === 'string') return !isBlankString(evidenceRef);
-  if (!Array.isArray(evidenceRef)) return true;
-
   const stack: unknown[] = [evidenceRef];
   const visitedArrays = new Set<unknown[]>();
   while (stack.length > 0) {
     const item = stack.pop();
     if (item == null) continue;
     if (typeof item === 'string') {
-      if (!isBlankString(item)) return true;
+      if (!isVisiblyBlank(item)) return true;
       continue;
     }
     if (!Array.isArray(item)) return true;
@@ -110,8 +106,15 @@ function hasEvidence(evidenceRef: unknown): boolean {
  * explicit timestamp — an exact, zoned instant — gets none. Either way, a
  * wrong future date can't hide a claim from review.
  *
- * @throws {TypeError} if `claim` is not an object, `maxAgeDays` is not a
- * number, or `now` is not a `Date`.
+ * The claim, `maxAgeDays` and `now` are each read once. `claim` is copied a
+ * single time (shallow) and the status is decided from, and the result built
+ * from, that copy, so a getter or Proxy cannot make the returned fields differ
+ * from the ones judged.
+ *
+ * @throws {TypeError} if `claim` is not a plain or null-prototype object (a
+ * Map, Date, array or class instance is rejected), `maxAgeDays` is not a
+ * number, or `now` is not a real `Date` (a `Date` subclass or a cross-realm
+ * `Date` is fine; an object that only looks like one is not).
  * @throws {RangeError} if `maxAgeDays` is negative or non-finite, or `now`
  * is an Invalid Date. A bad policy or clock must fail loudly here rather
  * than silently marking every claim `'current'`.
@@ -121,19 +124,23 @@ export function evaluateClaim<EvidenceRef = string>(
   maxAgeDays: number,
   now: Date = new Date(),
 ): EvaluatedClaim<EvidenceRef> {
-  assertClaimObject(claim, 'claim');
+  const snapshot = snapshotClaim<EvidenceRef>(claim, 'claim');
   assertMaxAgeDays(maxAgeDays);
-  assertNow(now);
-  return evaluate(claim, maxAgeDays, now);
+  const nowMs = readNow(now);
+  return evaluate(snapshot, maxAgeDays, nowMs);
 }
 
-/** The single place a status is decided. Callers have already validated their arguments. */
+/**
+ * The single place a status is decided. Callers have already validated their
+ * arguments and pass a one-time copy of the claim, so the fields judged here
+ * are the fields returned.
+ */
 function evaluate<EvidenceRef>(
   claim: Claim<EvidenceRef>,
   maxAgeDays: number,
-  now: Date,
+  nowMs: number,
 ): EvaluatedClaim<EvidenceRef> {
-  const { ageDays, usable } = computeAge(claim.verifiedAt, now);
+  const { ageDays, usable } = computeAge(claim.verifiedAt, nowMs);
 
   let status: ClaimStatus;
   if (!hasEvidence(claim.evidenceRef)) {
@@ -158,8 +165,10 @@ function evaluate<EvidenceRef>(
  * claim gets exactly one bucket via `evaluateClaim`, never two. Results are
  * in the same order as `claims`.
  *
- * @throws {TypeError} if `claims` is not an array (or contains a non-object
- * entry), `maxAgeDays` is not a number, or `now` is not a `Date`.
+ * @throws {TypeError} if `claims` is not an array, has a hole, or contains an
+ * entry that is not a plain or null-prototype object; `maxAgeDays` is not a
+ * number; or `now` is not a `Date`. The list is copied once and validated and
+ * processed from that one dense copy.
  * @throws {RangeError} if `maxAgeDays` is negative or non-finite, or `now`
  * is an Invalid Date.
  */
@@ -168,11 +177,11 @@ export function checkStaleness<EvidenceRef = string>(
   maxAgeDays: number,
   now: Date = new Date(),
 ): EvaluatedClaim<EvidenceRef>[] {
-  assertClaimList(claims);
+  const list = snapshotClaimList<EvidenceRef>(claims);
   assertMaxAgeDays(maxAgeDays);
-  assertNow(now);
-  return claims
-    .map((claim) => evaluate(claim, maxAgeDays, now))
+  const nowMs = readNow(now);
+  return list
+    .map((claim) => evaluate(claim, maxAgeDays, nowMs))
     .filter((evaluated) => evaluated.status === 'stale');
 }
 
@@ -185,12 +194,13 @@ export function checkStaleness<EvidenceRef = string>(
  * still supports what the claim says is a domain-specific, often semantic
  * judgment (does this test actually cover this sentence? does this page
  * still say what we think it says?) that this library does not attempt to
- * reimplement. Pair it with a grounding/citation-verification tool for
- * that — see the README's limits section.
+ * reimplement, and no sibling kit does it for you either — see the README's
+ * limits section.
  *
- * A string `evidenceRef` counts as present once whitespace and invisible
- * formatting characters are stripped; an array counts as present if any of
- * its elements do, checked recursively. See `Claim`'s doc comment for why
+ * A string `evidenceRef` counts as present unless it shows nothing (empty, or
+ * only whitespace, control characters and `Default_Ignorable_Code_Point`
+ * characters such as zero-width spaces and bidi controls); an array counts as
+ * present if any of its elements do, checked recursively. See `Claim`'s doc comment for why
  * any other value (an object, for a caller-defined evidence type) always
  * counts as present.
  *
@@ -199,20 +209,21 @@ export function checkStaleness<EvidenceRef = string>(
  * glance), but it plays no role in the `'unverified'` classification here.
  * Results are in the same order as `claims`.
  *
- * @throws {TypeError} if `claims` is not an array (or contains a non-object
- * entry) or `now` is not a `Date`.
+ * @throws {TypeError} if `claims` is not an array, has a hole, or contains an
+ * entry that is not a plain or null-prototype object; or `now` is not a
+ * `Date`.
  * @throws {RangeError} if `now` is an Invalid Date.
  */
 export function checkEvidenceLinked<EvidenceRef = string>(
   claims: readonly Claim<EvidenceRef>[],
   now: Date = new Date(),
 ): EvaluatedClaim<EvidenceRef>[] {
-  assertClaimList(claims);
-  assertNow(now);
+  const list = snapshotClaimList<EvidenceRef>(claims);
+  const nowMs = readNow(now);
   // The policy is irrelevant here (evidence presence outranks age), so an
   // unlimited one keeps this on the same code path as every other entry point.
-  return claims
-    .map((claim) => evaluate(claim, Number.POSITIVE_INFINITY, now))
+  return list
+    .map((claim) => evaluate(claim, Number.POSITIVE_INFINITY, nowMs))
     .filter((evaluated) => evaluated.status === 'unverified');
 }
 
@@ -244,11 +255,15 @@ export interface ClaimsReport<EvidenceRef = string> {
  * the claims and `now` you hand it, once, when you call it.
  *
  * `current`, `stale`, and `unverified` each preserve the order claims
- * appear in the input array.
+ * appear in the input array. Duplicate ids are not checked here (only
+ * `createClaimsRegistry` rejects them), so two claims with the same `id` can
+ * land in different buckets.
  *
- * @throws {TypeError} if `claims` is not an array (or contains a non-object
- * entry, or an entry whose `id` is not a non-empty string), `maxAgeDays` is
- * not a number, or `now` is not a `Date`. A claim with no `id` is rejected
+ * @throws {TypeError} if `claims` is not an array, has a hole, or contains an
+ * entry that is not a plain or null-prototype object, or an entry whose `id`
+ * is not a string that shows something (empty, whitespace-only and
+ * invisible-only ids are rejected), `maxAgeDays` is not a number, or `now` is
+ * not a `Date`. A claim with no `id` is rejected
  * rather than included with a blank/`undefined` label: `id` is how
  * `formatClaimsReportAsText` and a caller's own tracking name "this specific
  * claim" again later, and a claim this library can never point back to isn't
@@ -261,20 +276,20 @@ export function generateClaimsReport<EvidenceRef = string>(
   maxAgeDays: number,
   now: Date = new Date(),
 ): ClaimsReport<EvidenceRef> {
-  assertClaimList(claims);
-  claims.forEach((claim, i) => {
+  const list = snapshotClaimList<EvidenceRef>(claims);
+  list.forEach((claim, i) => {
     assertClaimId(claim.id, `claims[${String(i)}]`);
   });
   assertMaxAgeDays(maxAgeDays);
-  assertNow(now);
-  const evaluated = claims.map((claim) => evaluate(claim, maxAgeDays, now));
+  const nowMs = readNow(now);
+  const evaluated = list.map((claim) => evaluate(claim, maxAgeDays, nowMs));
 
   const current = evaluated.filter((c) => c.status === 'current');
   const stale = evaluated.filter((c) => c.status === 'stale');
   const unverified = evaluated.filter((c) => c.status === 'unverified');
 
   return {
-    generatedAt: now.toISOString(),
+    generatedAt: new Date(nowMs).toISOString(),
     maxAgeDays,
     counts: {
       current: current.length,
@@ -289,39 +304,63 @@ export function generateClaimsReport<EvidenceRef = string>(
 }
 
 /**
- * Render a `ClaimsReport` as plain, readable text — good enough to paste
- * into a CI job summary or print during a manual review pass. Optional
+ * Render a `ClaimsReport` as plain, readable text: a heading, a counts line,
+ * then one line per stale claim and one per unverified claim. Good enough to
+ * paste into a CI job summary or print during a manual review pass. Optional
  * convenience; the report object itself has everything a caller needs to
  * build their own formatting.
+ *
+ * Claim ids, claim text and the other report fields are caller-supplied
+ * strings, so every one of them is escaped before it is printed: each
+ * control character (C0, DEL and C1, including CR, LF and ESC), line or
+ * paragraph separator (U+2028, U+2029) and bidi formatting character
+ * (U+061C, U+200E, U+200F, U+202A-202E, U+2066-2069) becomes a visible
+ * escape such as `\u001b` (four lowercase hex digits). A newline in a claim
+ * therefore cannot start a fake heading or section, an ESC byte cannot reach
+ * a terminal, and a right-to-left override cannot reorder the text around
+ * it. Visible text in any script, emoji and backslashes are left as they
+ * are, and nothing is truncated. The escaping is for display only: it is not
+ * reversible (text that literally contains the six characters `\u001b` reads
+ * the same as text containing ESC) and the `report` object you passed in is
+ * never modified: read `id` and `text` from it, not from this string, for
+ * anything other than showing to a person.
+ *
+ * A non-string `id` or `text` in a hand-built report prints as itself
+ * (numbers, booleans, `null`, `undefined`) or by kind (`an object`,
+ * `a symbol`); the formatter never calls a value's own `toString`.
+ * Each claim's fields are read once. The text has no trailing newline.
  */
 export function formatClaimsReportAsText<EvidenceRef = string>(
   report: ClaimsReport<EvidenceRef>,
 ): string {
+  const { generatedAt, maxAgeDays, counts, stale, unverified } = report;
   const lines: string[] = [];
   lines.push(
-    `Claims report — generated ${report.generatedAt} (maxAgeDays: ${report.maxAgeDays})`,
+    `Claims report — generated ${displayValue(generatedAt)} (maxAgeDays: ${displayValue(maxAgeDays)})`,
   );
   lines.push(
-    `  current: ${report.counts.current}  stale: ${report.counts.stale}  unverified: ${report.counts.unverified}  total: ${report.counts.total}`,
+    `  current: ${displayValue(counts.current)}  stale: ${displayValue(counts.stale)}  unverified: ${displayValue(counts.unverified)}  total: ${displayValue(counts.total)}`,
   );
 
-  if (report.stale.length > 0) {
+  if (stale.length > 0) {
     lines.push('');
     lines.push('Stale claims (evidence linked, but review is overdue):');
-    for (const claim of report.stale) {
+    for (const claim of stale) {
+      const { id, text, ageDays } = claim;
       let age: string;
-      if (claim.ageDays === null) age = 'unparseable verifiedAt';
-      else if (claim.ageDays < 0) age = 'verifiedAt is in the future';
-      else age = `${claim.ageDays}d old`;
-      lines.push(`  [${claim.id}] "${claim.text}" — ${age}`);
+      if (ageDays === null) age = 'unparseable verifiedAt';
+      else if (ageDays < 0) age = 'verifiedAt is in the future';
+      else age = `${displayValue(ageDays)}d old`;
+      lines.push(`  [${displayValue(id)}] "${displayValue(text)}" — ${age}`);
     }
   }
 
-  if (report.unverified.length > 0) {
+  if (unverified.length > 0) {
     lines.push('');
     lines.push('Unverified claims (no evidenceRef):');
-    for (const claim of report.unverified) {
-      lines.push(`  [${claim.id}] "${claim.text}"`);
+    for (const claim of unverified) {
+      const { id, text } = claim;
+      lines.push(`  [${displayValue(id)}] "${displayValue(text)}"`);
     }
   }
 

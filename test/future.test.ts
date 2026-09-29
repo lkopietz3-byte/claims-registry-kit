@@ -113,3 +113,17 @@ describe('text report wording for future dates', () => {
     expect(text).not.toMatch(/-\d+d old/);
   });
 });
+
+describe('the negative age of a future verifiedAt is exact', () => {
+  it.each([
+    ['a bare date one day ahead', '2026-08-03', -1],
+    ['a bare date two days ahead', '2026-08-04', -2],
+    ['a timestamp one and a half days ahead rounds down', '2026-08-03T12:00:00Z', -2],
+    ['a timestamp one millisecond ahead', '2026-08-02T00:00:00.001Z', -1],
+    ['a timestamp exactly one day ahead', '2026-08-03T00:00:00Z', -1],
+  ])('%s', (_label, verifiedAt, expectedAge) => {
+    const result = evaluateClaim(claim({ verifiedAt }), 90, NOW);
+    expect(result.status).toBe('stale');
+    expect(result.ageDays).toBe(expectedAge);
+  });
+});
