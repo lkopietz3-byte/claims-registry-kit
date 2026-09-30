@@ -162,7 +162,7 @@ load time, `createClaimsRegistry` gives you one array to run checks
 against. It's optional — most callers will just keep an array of `Claim`
 objects wherever they already keep config and skip this entirely. The
 registry copies each claim object on the way in and out, but the copy is
-shallow: if `evidenceRef` is a list, the registry and you still
+shallow: if `evidenceRef` is an array or an object, the registry and you still
 share that inner value (see [Honest limits](#honest-limits)).
 
 ```ts
@@ -208,9 +208,9 @@ a map, not the whole story.
 ### Types
 
 - **`Claim<EvidenceRef = string>`** — `{ id, text, evidenceRef, verifiedAt, verifiedBy? }`.
-  The record you build. `evidenceRef` is a string or a list of strings;
-  `null`, `undefined` and `false` mean no evidence, and any other top-level
-  value makes the checks throw a `TypeError`. A claim must be a plain object (or one with a `null`
+  The record you build; `EvidenceRef` defaults to `string` but can be any
+  shape you supply (a value that is falsy or blank counts as no evidence, see
+  Honest limits). A claim must be a plain object (or one with a `null`
   prototype): a `Map`, `Date`, array or class instance is rejected with a
   `TypeError` instead of being read as a claim with no fields.
 - **`IsoDateString`** — a `string` alias for `verifiedAt`: a bare
@@ -327,7 +327,7 @@ characters).
   registry.
 - **The registry's copy is shallow.** `registerClaim`, `getClaims` and
   `getClaim` copy the claim object, not what its fields point at. If
-  `evidenceRef` is a list, the registry and the caller share
+  `evidenceRef` is an array or an object, the registry and the caller share
   it: changing it in place after registering changes the registry's claim and
   can change its status. There is no automatic deep clone, freeze or
   serialization. Copy it yourself first if that matters.
@@ -348,20 +348,17 @@ characters).
   own storage (a config module, a JSON file, a database table — anything
   that produces a `Claim[]`) and your own trigger (a CI step, a manual
   script run, a scheduled task in whatever system you already use).
-- **`evidenceRef` is a string or a list of strings.** This library doesn't
-  assume it's a file path, a URL, or anything specific, and it never opens or
-  fetches it. `null`, `undefined` and `false` mean no evidence. Any other
-  top-level value (a number, `true`, your own evidence object) makes
-  `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked` and
-  `generateClaimsReport` throw a `TypeError`, because reading a value this
-  library can't inspect as "present" would let `0` or `NaN` pass for evidence.
-  The `Claim<EvidenceRef>` type parameter still exists, so a typed list or a
-  nullable string type-checks, but a `Claim<{ kind: string; ref: string }>`
-  compiles and cannot be evaluated: encode the kind in the string (for
-  example `'test: suite > case'`). `createClaimsRegistry` stores whatever it
-  is given and does not read `evidenceRef`, so the `TypeError` appears when a
-  check runs. Inside a list, an element that is not a string, an array or
-  nullish (`0`, `false`, an object) still counts as present.
+- **`evidenceRef` is an opaque generic on purpose.** This library doesn't
+  assume it's a file path, a URL, or anything specific — `Claim<EvidenceRef
+  = string>` lets you supply a richer type (e.g. `{ kind: 'test' | 'url'
+  | 'file'; ref: string }`) if a plain string isn't enough for your system.
+  It never opens, fetches or interprets the value. Only these are read as
+  no evidence: `null`, `undefined`, `false`, `0`, `-0`, `NaN`, `0n`, an empty
+  or visibly blank string, and a list with no present entry. The same rule applies to each entry inside a
+  list, so `[false]`, `[0]` and `['']` are missing. Every other value (an
+  object, `true`, a non-zero number, a function, a symbol) counts as present
+  without inspection, so an object whose `ref` field is empty still counts as
+  present: this library doesn't know its shape.
 
 ## Relationship to sibling kits
 

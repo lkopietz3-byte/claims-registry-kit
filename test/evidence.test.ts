@@ -36,6 +36,21 @@ describe('evidenceRef counts as present', () => {
     ['a list with one real entry', ['docs/a.md']],
     ['a list with blanks and one real entry', ['', '  ', 'docs/a.md']],
     ['a nested list with one real entry', [[], [['docs/a.md']]]],
+    ['true', true],
+    ['a nonzero number', 42],
+    ['a negative number', -1],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['a nonzero bigint', 1n],
+    ['an empty object (opaque: the library does not interpret it)', {}],
+    ['an object with an empty ref field', { kind: 'test', ref: '' }],
+    ['a null-prototype object', Object.create(null) as object],
+    ['an empty Map', new Map()],
+    ['a Date', new Date(0)],
+    ['a boxed zero (an object, not the number)', new Number(0)],
+    ['a function', () => 'evidence'],
+    ['a symbol', Symbol('evidence')],
+    ['a list with one object entry', [{ kind: 'url', ref: 'https://example.com/a' }]],
+    ['a list of falsy values and one truthy number', [false, 0, '', 7]],
   ])('%s', (_label, evidenceRef) => {
     expect(statusOf(evidenceRef)).toBe('current');
   });
@@ -45,7 +60,11 @@ describe('evidenceRef counts as missing (status unverified)', () => {
   it.each([
     ['undefined', undefined],
     ['null', null],
-    ['false (the explicit "no evidence" value)', false],
+    ['false', false],
+    ['the number zero', 0],
+    ['negative zero', -0],
+    ['NaN', Number.NaN],
+    ['the bigint zero', 0n],
     ['an empty string', ''],
     ['spaces', '   '],
     ['tabs and newlines', '\t\n\r '],
@@ -64,6 +83,10 @@ describe('evidenceRef counts as missing (status unverified)', () => {
     ['nested empty arrays', [[], [[]]]],
     ['nested blank strings', [[''], ['  ']]],
     ['a sparse array of holes', new Array<string>(3)],
+    ['a list holding only false', [false]],
+    ['a list holding only zero', [0]],
+    ['a list of every falsy value', [false, 0, -0, Number.NaN, 0n, '', null, undefined]],
+    ['nested lists of falsy values', [[false], [[0n, Number.NaN]]]],
   ])('%s', (_label, evidenceRef) => {
     expect(statusOf(evidenceRef)).toBe('unverified');
   });
@@ -76,64 +99,72 @@ describe('evidenceRef counts as missing (status unverified)', () => {
   });
 });
 
-describe('evidenceRef that is not no-evidence, a string or an array is a TypeError', () => {
-  // Before, 0, false, NaN and any object read as present evidence, so a claim
-  // with `evidenceRef: false` came back 'current'.
+describe('falsy evidenceRef values are missing evidence, not present', () => {
+  // Before, false, 0, NaN and 0n counted as present, so a claim with
+  // `evidenceRef: false` and a fresh date came back 'current'.
   it.each([
-    ['the number zero', 0],
-    ['a nonzero number', 42],
+    ['false', false],
+    ['0', 0],
+    ['-0', -0],
     ['NaN', Number.NaN],
-    ['Infinity', Number.POSITIVE_INFINITY],
-    ['true', true],
-    ['a bigint', 1n],
-    ['an empty object', {}],
-    ['an object with a ref field', { kind: 'test', ref: 'suite > case' }],
-    ['a null-prototype object', Object.create(null) as object],
-    ['an empty Map', new Map()],
-    ['a Date', new Date(0)],
-    ['a function', () => 'evidence'],
-    ['a symbol', Symbol('evidence')],
-    ['a String object', new String('docs/a.md')],
-  ])('%s', (_label, evidenceRef) => {
-    const bad = looseClaim({ evidenceRef });
-    expect(() => evaluateClaim(bad, 90, NOW)).toThrow(TypeError);
-    expect(() => evaluateClaim(bad, 90, NOW)).toThrow(/evidenceRef must be a string or an array of strings/);
-    expect(() => checkEvidenceLinked([bad], NOW)).toThrow(TypeError);
-    expect(() => generateClaimsReport([bad], 90, NOW)).toThrow(TypeError);
-    expect(() => checkStaleness([bad], 90, NOW)).toThrow(TypeError);
+    ['0n', 0n],
+  ])('%s is unverified and a fresh date cannot rescue it', (_label, evidenceRef) => {
+    const fresh = looseClaim({ evidenceRef, verifiedAt: '2026-08-01' });
+    expect(evaluateClaim(fresh, 90, NOW).status).toBe('unverified');
+    expect(checkEvidenceLinked([fresh], NOW)).toHaveLength(1);
+    expect(checkStaleness([fresh], 90, NOW)).toHaveLength(0);
+    expect(generateClaimsReport([fresh], 90, NOW).counts).toEqual({
+      current: 0,
+      stale: 0,
+      unverified: 1,
+      total: 1,
+    });
   });
 
-  it('names what it received without calling into it', () => {
-    let touched = false;
-    const hostile = {
-      toString() {
-        touched = true;
+  it('no evidenceRef type ever throws: every value gets a status', () => {
+    const values: unknown[] = [0, false, NaN, 1, true, 1n, {}, new Map(), () => 1, Symbol('x'), new Date(0), [{}], [[0]]];
+    for (const evidenceRef of values) {
+      expect(() => evaluateClaim(looseClaim({ evidenceRef }), 90, NOW)).not.toThrow();
+    }
+  });
+
+  it('a present object is never inspected: no getter, toString, toJSON or valueOf runs', () => {
+    let touched = 0;
+    const opaque = {
+      get ref(): string {
+        touched += 1;
         return 'x';
       },
-      toJSON() {
-        touched = true;
-        return 'x';
+      toString(): string {
+        touched += 1;
+        return '';
+      },
+      toJSON(): string {
+        touched += 1;
+        return '';
+      },
+      valueOf(): number {
+        touched += 1;
+        return 0;
       },
     };
-    expect(() => evaluateClaim(looseClaim({ evidenceRef: hostile }), 90, NOW)).toThrow(/received an object/);
-    expect(touched).toBe(false);
+    expect(statusOf(opaque)).toBe('current');
+    expect(statusOf([opaque])).toBe('current');
+    expect(touched).toBe(0);
   });
 
-  it('false is no evidence, so the claim is unverified and a fresh date cannot rescue it', () => {
-    const result = evaluateClaim(looseClaim({ evidenceRef: false, verifiedAt: '2026-08-01' }), 90, NOW);
-    expect(result.status).toBe('unverified');
-    expect(checkEvidenceLinked([looseClaim({ evidenceRef: false })], NOW)).toHaveLength(1);
+  it('the rule is per element: one present entry beside falsy ones is present', () => {
+    expect(statusOf([false, 0, 1])).toBe('current');
+    expect(statusOf([false, [0n, [true]]])).toBe('current');
+    expect(statusOf([false, [0n, [NaN]]])).toBe('unverified');
   });
 
-  it('a list still follows the element rules: a non-string entry inside a list counts as present', () => {
-    expect(statusOf([false])).toBe('current');
-    expect(statusOf([0])).toBe('current');
-  });
-
-  it('the registry stores the claim as given; the TypeError comes when a check evaluates it', () => {
+  it('the registry stores a claim as given; a check decides its status', () => {
     const registry = createClaimsRegistry<unknown>();
     registry.registerClaim({ ...claim(), evidenceRef: { kind: 'file', ref: 'a.ts' } });
-    expect(() => generateClaimsReport(registry.getClaims(), 90, NOW)).toThrow(TypeError);
+    registry.registerClaim({ ...claim(), id: 'c2', evidenceRef: false });
+    const report = generateClaimsReport(registry.getClaims(), 90, NOW);
+    expect(report.counts).toEqual({ current: 1, stale: 0, unverified: 1, total: 2 });
   });
 });
 
@@ -185,10 +216,11 @@ describe('custom evidenceRef types', () => {
     ref: string;
   }
 
-  it('a caller-defined object type is rejected with a TypeError, never read as present', () => {
+  it('a caller-defined object type is treated as present without inspecting its fields', () => {
     const typed: Claim<Ref> = { ...claim(), evidenceRef: { kind: 'test', ref: 'suite > case' } };
-    expect(() => evaluateClaim(typed, 90, NOW)).toThrow(TypeError);
-    expect(() => evaluateClaim(typed, 90, NOW)).toThrow(/evidenceRef must be a string or an array of strings/);
+    const result = evaluateClaim(typed, 90, NOW);
+    expect(result.status).toBe('current');
+    expect(result.evidenceRef).toEqual({ kind: 'test', ref: 'suite > case' });
   });
 
   it('a list-of-strings type gets the list rules', () => {

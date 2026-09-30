@@ -34,18 +34,15 @@ shape and the status rules are unchanged.
   can make its own line read differently. Visible text is unchanged,
   nothing is truncated, and the report object stays raw. String ids and text
   with no such characters print exactly as before.
-- **`evidenceRef` must be no evidence, a string or an array.** `null`, `undefined`
-  and `false` now mean no evidence, so the claim is `'unverified'`. Any other
-  top-level value that is not a string or an array (`0`, `NaN`, `true`, an
-  object, a `Map`, a function, a symbol, a bigint) throws a `TypeError` in
-  `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked` and
-  `generateClaimsReport`. Before, `false`, `0` and `NaN` (and any object) counted
-  as present evidence, so a claim with `evidenceRef: false` and a fresh date came
-  back `'current'`. The element rules inside an array are unchanged (a
-  non-string, non-nullish element still counts as present). `registerClaim`
-  does not read `evidenceRef`, so the error appears when a check runs. A
-  caller-defined evidence object (`Claim<{ kind, ref }>`) therefore no longer
-  works: pass a string or a list of strings.
+- **A falsy `evidenceRef` is missing evidence.** `false`, `0`, `-0`, `NaN` and
+  `0n` now mean no evidence, like `null`, `undefined`, an empty string and a
+  blank string, so the claim is `'unverified'`. Before, only `null`,
+  `undefined` and blank strings did, so `evidenceRef: false` or `0` with a fresh
+  date came back `'current'`. The same rule applies to each element inside a
+  list: `[false]`, `[0]` and `['']` are missing, and a list with no present
+  element is missing. Every other value still counts as present and is never
+  inspected: an object (`Claim<{ kind, ref }>`), `true`, a non-zero number, a
+  function, a symbol. No evidence type throws.
 - **A claim must be a plain object.** A `Map`, `Set`, `Date`, `RegExp`, array
   or class instance (or a boxed primitive) passed as a claim now throws a
   `TypeError` in `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked`,
