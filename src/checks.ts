@@ -3,6 +3,7 @@ import { displayValue, isVisiblyBlank } from './text.js';
 import type { Claim, ClaimStatus, EvaluatedClaim } from './types.js';
 import {
   assertClaimId,
+  assertEvidenceRefType,
   assertMaxAgeDays,
   readNow,
   snapshotClaim,
@@ -62,11 +63,21 @@ function computeAge(verifiedAt: unknown, nowMs: number): Age {
  *   recursively (a list of evidence refs, or a list of lists). Repeated or
  *   cyclic sub-arrays are each visited only once, so this always terminates
  *   and never grows the call stack with input depth.
- * - Any other non-nullish value (a caller-defined evidence object, for
- *   example) is treated as present, since this library doesn't know its
- *   shape — see `Claim`'s doc comment.
+ * - `null`, `undefined` and `false` at the top level mean no evidence.
+ * - Any other top-level value that is not a string or an array (a number,
+ *   `true`, an object, a function, a symbol) throws a `TypeError`: it is
+ *   neither "no evidence" nor a reference this library can read, and reading
+ *   it as present would let `0` or `NaN` pass for evidence.
+ * - Inside an array, an element that is neither nullish, a string nor an
+ *   array counts as present (the element rule is unchanged).
+ *
+ * @throws {TypeError} if the top-level value is not `null`, `undefined`,
+ * `false`, a string or an array.
  */
 function hasEvidence(evidenceRef: unknown): boolean {
+  assertEvidenceRefType(evidenceRef);
+  // Top level only: inside an array, `false` is an element like any other.
+  if (evidenceRef == null || evidenceRef === false) return false;
   const stack: unknown[] = [evidenceRef];
   const visitedArrays = new Set<unknown[]>();
   while (stack.length > 0) {
@@ -113,8 +124,9 @@ function hasEvidence(evidenceRef: unknown): boolean {
  *
  * @throws {TypeError} if `claim` is not a plain or null-prototype object (a
  * Map, Date, array or class instance is rejected), `maxAgeDays` is not a
- * number, or `now` is not a real `Date` (a `Date` subclass or a cross-realm
- * `Date` is fine; an object that only looks like one is not).
+ * number, `now` is not a real `Date` (a `Date` subclass or a cross-realm
+ * `Date` is fine; an object that only looks like one is not), or the claim's
+ * `evidenceRef` is not `null`, `undefined`, `false`, a string or an array.
  * @throws {RangeError} if `maxAgeDays` is negative or non-finite, or `now`
  * is an Invalid Date. A bad policy or clock must fail loudly here rather
  * than silently marking every claim `'current'`.
@@ -167,8 +179,9 @@ function evaluate<EvidenceRef>(
  *
  * @throws {TypeError} if `claims` is not an array, has a hole, or contains an
  * entry that is not a plain or null-prototype object; `maxAgeDays` is not a
- * number; or `now` is not a `Date`. The list is copied once and validated and
- * processed from that one dense copy.
+ * number; `now` is not a `Date`; or an entry's `evidenceRef` is not `null`,
+ * `undefined`, `false`, a string or an array. The list is copied once and
+ * validated and processed from that one dense copy.
  * @throws {RangeError} if `maxAgeDays` is negative or non-finite, or `now`
  * is an Invalid Date.
  */
@@ -200,9 +213,9 @@ export function checkStaleness<EvidenceRef = string>(
  * A string `evidenceRef` counts as present unless it shows nothing (empty, or
  * only whitespace, control characters and `Default_Ignorable_Code_Point`
  * characters such as zero-width spaces and bidi controls); an array counts as
- * present if any of its elements do, checked recursively. See `Claim`'s doc comment for why
- * any other value (an object, for a caller-defined evidence type) always
- * counts as present.
+ * present if any of its elements do, checked recursively. `null`, `undefined`
+ * and `false` mean no evidence. Any other top-level value (a number, `true`,
+ * an object) throws a `TypeError`: see `Claim`'s doc comment.
  *
  * `ageDays` is still computed on the returned claims for convenience (a
  * claim missing evidence AND overdue for review is worth knowing at a
@@ -210,8 +223,9 @@ export function checkStaleness<EvidenceRef = string>(
  * Results are in the same order as `claims`.
  *
  * @throws {TypeError} if `claims` is not an array, has a hole, or contains an
- * entry that is not a plain or null-prototype object; or `now` is not a
- * `Date`.
+ * entry that is not a plain or null-prototype object; `now` is not a
+ * `Date`; or an entry's `evidenceRef` is not `null`, `undefined`, `false`, a
+ * string or an array.
  * @throws {RangeError} if `now` is an Invalid Date.
  */
 export function checkEvidenceLinked<EvidenceRef = string>(
@@ -262,8 +276,9 @@ export interface ClaimsReport<EvidenceRef = string> {
  * @throws {TypeError} if `claims` is not an array, has a hole, or contains an
  * entry that is not a plain or null-prototype object, or an entry whose `id`
  * is not a string that shows something (empty, whitespace-only and
- * invisible-only ids are rejected), `maxAgeDays` is not a number, or `now` is
- * not a `Date`. A claim with no `id` is rejected
+ * invisible-only ids are rejected), `maxAgeDays` is not a number, `now` is
+ * not a `Date`, or an entry's `evidenceRef` is not `null`, `undefined`,
+ * `false`, a string or an array. A claim with no `id` is rejected
  * rather than included with a blank/`undefined` label: `id` is how
  * `formatClaimsReportAsText` and a caller's own tracking name "this specific
  * claim" again later, and a claim this library can never point back to isn't

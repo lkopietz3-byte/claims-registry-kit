@@ -32,6 +32,27 @@ function describe(value: unknown): string {
   return isPlainObject(value) ? 'an object' : 'a non-plain object';
 }
 
+/**
+ * A claim's top-level `evidenceRef` must be `null`, `undefined` or `false` (no
+ * evidence), a string, or an array. Anything else (a number, `true`, an
+ * object, a function, a symbol, a bigint) is neither "no evidence" nor a
+ * reference this library can read, so it must fail loudly: read as "present",
+ * `evidenceRef: 0` or `NaN` would turn a claim with no evidence `'current'`.
+ */
+export function assertEvidenceRefType(value: unknown): void {
+  if (value == null || value === false || typeof value === 'string') return;
+  let isArray = false;
+  try {
+    isArray = Array.isArray(value);
+  } catch {
+    // a revoked proxy makes Array.isArray throw; fall through to the error
+  }
+  if (isArray) return;
+  throw new TypeError(
+    `${PREFIX}evidenceRef must be a string or an array of strings (null, undefined and false mean no evidence; received ${describe(value)})`,
+  );
+}
+
 /** `maxAgeDays` must be a finite number >= 0. */
 export function assertMaxAgeDays(value: unknown): asserts value is number {
   if (typeof value !== 'number') {

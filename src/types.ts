@@ -28,20 +28,26 @@ export type IsoDateString = string;
 /**
  * A single public-facing product claim, tied to the evidence that backs it.
  *
- * `EvidenceRef` is generic and deliberately opaque: this library does not
- * assume evidence is a file path, a URL, a test id, or anything else. It is
- * whatever your own system already uses to point at proof — a plain string
- * by default, or a richer caller-defined type if you supply one. Nothing in
- * this library dereferences, fetches, or validates that reference — see
- * `checkEvidenceLinked`'s doc comment and the README's limits section for
- * why that's a deliberate boundary, not an oversight.
+ * `evidenceRef` is whatever your own system uses to point at proof: a file
+ * path, a URL, a test id. It is a string by default, or a list of strings.
+ * `null`, `undefined` and `false` mean no evidence. The checks read nothing
+ * else: any other top-level value (a number, `true`, an object) makes
+ * `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked` and
+ * `generateClaimsReport` throw a `TypeError`, because reading it as present
+ * would let `0` or `NaN` pass for evidence. The `EvidenceRef` type parameter
+ * is kept so a typed list or a nullable string still type-checks; a
+ * `Claim<{ kind: string; ref: string }>` compiles but cannot be evaluated.
+ * Nothing in this library dereferences, fetches, or validates what the
+ * reference points at — see `checkEvidenceLinked`'s doc comment and the
+ * README's limits section for why that's a deliberate boundary, not an
+ * oversight.
  */
 export interface Claim<EvidenceRef = string> {
   /** Stable identifier for this claim, unique within your registry. */
   id: string;
   /** The actual public-facing sentence, verbatim — what a user or visitor reads. */
   text: string;
-  /** A caller-defined reference to whatever proves this claim true. */
+  /** A reference to whatever proves this claim true: a string or a list of strings. `null`, `undefined` and `false` mean none. */
   evidenceRef: EvidenceRef;
   /** ISO 8601 date this claim's evidence was last confirmed to still hold. */
   verifiedAt: IsoDateString;
@@ -58,7 +64,8 @@ export interface Claim<EvidenceRef = string> {
  * stored on the Claim itself, so there is no risk of a persisted status
  * drifting out of sync with the date math that produced it.
  *
- * - `'unverified'` — `evidenceRef` is missing or empty. This takes priority
+ * - `'unverified'` — `evidenceRef` is missing (`null`, `undefined` or
+ *   `false`) or empty. This takes priority
  *   over staleness: a claim with no evidence is unverified regardless of
  *   how recent `verifiedAt` is. A fresh date next to an empty reference
  *   isn't evidence of anything.

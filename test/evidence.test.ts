@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkEvidenceLinked,
+  checkStaleness,
+  createClaimsRegistry,
   evaluateClaim,
   generateClaimsReport,
   type Claim,
@@ -34,14 +36,6 @@ describe('evidenceRef counts as present', () => {
     ['a list with one real entry', ['docs/a.md']],
     ['a list with blanks and one real entry', ['', '  ', 'docs/a.md']],
     ['a nested list with one real entry', [[], [['docs/a.md']]]],
-    ['the number zero (a valid id)', 0],
-    ['false', false],
-    ['NaN', Number.NaN],
-    ['an empty object (its shape is unknown to the library)', {}],
-    ['an object with an empty ref field', { kind: 'test', ref: '' }],
-    ['an empty Map', new Map()],
-    ['a function', () => 'evidence'],
-    ['a symbol', Symbol('evidence')],
   ])('%s', (_label, evidenceRef) => {
     expect(statusOf(evidenceRef)).toBe('current');
   });
@@ -51,6 +45,7 @@ describe('evidenceRef counts as missing (status unverified)', () => {
   it.each([
     ['undefined', undefined],
     ['null', null],
+    ['false (the explicit "no evidence" value)', false],
     ['an empty string', ''],
     ['spaces', '   '],
     ['tabs and newlines', '\t\n\r '],
@@ -78,6 +73,67 @@ describe('evidenceRef counts as missing (status unverified)', () => {
     expect(evaluateClaim(blankList, 90, NOW).status).toBe('unverified');
     expect(checkEvidenceLinked([blankList], NOW)).toHaveLength(1);
     expect(generateClaimsReport([blankList], 90, NOW).counts.unverified).toBe(1);
+  });
+});
+
+describe('evidenceRef that is not no-evidence, a string or an array is a TypeError', () => {
+  // Before, 0, false, NaN and any object read as present evidence, so a claim
+  // with `evidenceRef: false` came back 'current'.
+  it.each([
+    ['the number zero', 0],
+    ['a nonzero number', 42],
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['true', true],
+    ['a bigint', 1n],
+    ['an empty object', {}],
+    ['an object with a ref field', { kind: 'test', ref: 'suite > case' }],
+    ['a null-prototype object', Object.create(null) as object],
+    ['an empty Map', new Map()],
+    ['a Date', new Date(0)],
+    ['a function', () => 'evidence'],
+    ['a symbol', Symbol('evidence')],
+    ['a String object', new String('docs/a.md')],
+  ])('%s', (_label, evidenceRef) => {
+    const bad = looseClaim({ evidenceRef });
+    expect(() => evaluateClaim(bad, 90, NOW)).toThrow(TypeError);
+    expect(() => evaluateClaim(bad, 90, NOW)).toThrow(/evidenceRef must be a string or an array of strings/);
+    expect(() => checkEvidenceLinked([bad], NOW)).toThrow(TypeError);
+    expect(() => generateClaimsReport([bad], 90, NOW)).toThrow(TypeError);
+    expect(() => checkStaleness([bad], 90, NOW)).toThrow(TypeError);
+  });
+
+  it('names what it received without calling into it', () => {
+    let touched = false;
+    const hostile = {
+      toString() {
+        touched = true;
+        return 'x';
+      },
+      toJSON() {
+        touched = true;
+        return 'x';
+      },
+    };
+    expect(() => evaluateClaim(looseClaim({ evidenceRef: hostile }), 90, NOW)).toThrow(/received an object/);
+    expect(touched).toBe(false);
+  });
+
+  it('false is no evidence, so the claim is unverified and a fresh date cannot rescue it', () => {
+    const result = evaluateClaim(looseClaim({ evidenceRef: false, verifiedAt: '2026-08-01' }), 90, NOW);
+    expect(result.status).toBe('unverified');
+    expect(checkEvidenceLinked([looseClaim({ evidenceRef: false })], NOW)).toHaveLength(1);
+  });
+
+  it('a list still follows the element rules: a non-string entry inside a list counts as present', () => {
+    expect(statusOf([false])).toBe('current');
+    expect(statusOf([0])).toBe('current');
+  });
+
+  it('the registry stores the claim as given; the TypeError comes when a check evaluates it', () => {
+    const registry = createClaimsRegistry<unknown>();
+    registry.registerClaim({ ...claim(), evidenceRef: { kind: 'file', ref: 'a.ts' } });
+    expect(() => generateClaimsReport(registry.getClaims(), 90, NOW)).toThrow(TypeError);
   });
 });
 
@@ -129,11 +185,10 @@ describe('custom evidenceRef types', () => {
     ref: string;
   }
 
-  it('a caller-defined object type is treated as present without inspecting its fields', () => {
+  it('a caller-defined object type is rejected with a TypeError, never read as present', () => {
     const typed: Claim<Ref> = { ...claim(), evidenceRef: { kind: 'test', ref: 'suite > case' } };
-    const result = evaluateClaim(typed, 90, NOW);
-    expect(result.status).toBe('current');
-    expect(result.evidenceRef).toEqual({ kind: 'test', ref: 'suite > case' });
+    expect(() => evaluateClaim(typed, 90, NOW)).toThrow(TypeError);
+    expect(() => evaluateClaim(typed, 90, NOW)).toThrow(/evidenceRef must be a string or an array of strings/);
   });
 
   it('a list-of-strings type gets the list rules', () => {
