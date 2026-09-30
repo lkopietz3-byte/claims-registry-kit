@@ -27,10 +27,22 @@ shape and the status rules are unchanged.
   characters (C0, DEL, C1, including CR, LF and ESC), U+2028, U+2029 and bidi
   formatting characters (U+061C, U+200E, U+200F, U+202A-202E, U+2066-2069) in
   ids, claim text and the other printed fields become visible escapes such as
-  `\u001b`. A newline in a claim can no longer forge a second report heading
-  and an ESC byte no longer reaches the terminal. Visible text is unchanged,
+  `\u001b`. A newline in a claim can no longer forge a second report line or
+  heading and an ESC byte no longer reaches the terminal. Quotes, square
+  brackets and other invisible characters are not escaped (see the README's
+  Honest limits), so this stops new lines and headings, not every way a claim
+  can make its own line read differently. Visible text is unchanged,
   nothing is truncated, and the report object stays raw. String ids and text
   with no such characters print exactly as before.
+- **A falsy `evidenceRef` is missing evidence.** `false`, `0`, `-0`, `NaN` and
+  `0n` now mean no evidence, like `null`, `undefined`, an empty string and a
+  blank string, so the claim is `'unverified'`. Before, only `null`,
+  `undefined` and blank strings did, so `evidenceRef: false` or `0` with a fresh
+  date came back `'current'`. The same rule applies to each element inside a
+  list: `[false]`, `[0]` and `['']` are missing, and a list with no present
+  element is missing. Every other value still counts as present and is never
+  inspected: an object (`Claim<{ kind, ref }>`), `true`, a non-zero number, a
+  function, a symbol. No evidence type throws.
 - **A claim must be a plain object.** A `Map`, `Set`, `Date`, `RegExp`, array
   or class instance (or a boxed primitive) passed as a claim now throws a
   `TypeError` in `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked`,

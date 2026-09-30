@@ -31,7 +31,11 @@ export type IsoDateString = string;
  * `EvidenceRef` is generic and deliberately opaque: this library does not
  * assume evidence is a file path, a URL, a test id, or anything else. It is
  * whatever your own system already uses to point at proof — a plain string
- * by default, or a richer caller-defined type if you supply one. Nothing in
+ * by default, or a richer caller-defined type if you supply one. The only
+ * values read as "no evidence" are `null`, `undefined`, `false`, `0`, `-0`,
+ * `NaN`, `0n`, a blank string and a list with no present entry; every other
+ * value (an object, `true`, a non-zero number) counts as present and is never
+ * inspected. Nothing in
  * this library dereferences, fetches, or validates that reference — see
  * `checkEvidenceLinked`'s doc comment and the README's limits section for
  * why that's a deliberate boundary, not an oversight.
@@ -58,7 +62,9 @@ export interface Claim<EvidenceRef = string> {
  * stored on the Claim itself, so there is no risk of a persisted status
  * drifting out of sync with the date math that produced it.
  *
- * - `'unverified'` — `evidenceRef` is missing or empty. This takes priority
+ * - `'unverified'` — `evidenceRef` is missing or empty: `null`, `undefined`,
+ *   `false`, `0`, `-0`, `NaN`, `0n`, a blank string, or a list with no
+ *   present entry. This takes priority
  *   over staleness: a claim with no evidence is unverified regardless of
  *   how recent `verifiedAt` is. A fresh date next to an empty reference
  *   isn't evidence of anything.

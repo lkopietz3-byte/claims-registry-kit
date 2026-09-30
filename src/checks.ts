@@ -46,6 +46,11 @@ function computeAge(verifiedAt: unknown, nowMs: number): Age {
   return { ageDays: Math.max(0, Math.floor(elapsedMs / MS_PER_DAY)), usable: true };
 }
 
+/** The values that mean "no evidence": nullish, `false`, and the zeros (`0`, `-0`, `NaN`, `0n`). */
+function isMissingScalar(value: unknown): boolean {
+  return value == null || value === false || value === 0 || value === 0n || Number.isNaN(value);
+}
+
 /**
  * Purely structural presence check — does this evidenceRef contain anything
  * at all?
@@ -62,16 +67,23 @@ function computeAge(verifiedAt: unknown, nowMs: number): Age {
  *   recursively (a list of evidence refs, or a list of lists). Repeated or
  *   cyclic sub-arrays are each visited only once, so this always terminates
  *   and never grows the call stack with input depth.
- * - Any other non-nullish value (a caller-defined evidence object, for
- *   example) is treated as present, since this library doesn't know its
- *   shape — see `Claim`'s doc comment.
+ * - `null`, `undefined`, `false`, `0`, `-0`, `NaN` and `0n` are missing:
+ *   each is what a missing value looks like after a falsy default, and none
+ *   can name a piece of evidence.
+ * - Any other value (a caller-defined evidence object, `true`, a non-zero
+ *   number, a function, a symbol) is treated as present, since this library
+ *   doesn't know its shape and never inspects it — see `Claim`'s doc
+ *   comment. No evidence type throws.
+ *
+ * The same rule applies to every element inside an array, so `[false]`, `[0]`
+ * and `['']` are missing and an array with no present element is missing.
  */
 function hasEvidence(evidenceRef: unknown): boolean {
   const stack: unknown[] = [evidenceRef];
   const visitedArrays = new Set<unknown[]>();
   while (stack.length > 0) {
     const item = stack.pop();
-    if (item == null) continue;
+    if (isMissingScalar(item)) continue;
     if (typeof item === 'string') {
       if (!isVisiblyBlank(item)) return true;
       continue;
@@ -200,9 +212,10 @@ export function checkStaleness<EvidenceRef = string>(
  * A string `evidenceRef` counts as present unless it shows nothing (empty, or
  * only whitespace, control characters and `Default_Ignorable_Code_Point`
  * characters such as zero-width spaces and bidi controls); an array counts as
- * present if any of its elements do, checked recursively. See `Claim`'s doc comment for why
- * any other value (an object, for a caller-defined evidence type) always
- * counts as present.
+ * present if any of its elements do, checked recursively. `null`,
+ * `undefined`, `false`, `0`, `-0`, `NaN` and `0n` are missing, at the top
+ * level and inside a list. See `Claim`'s doc comment for why any other value
+ * (an object, for a caller-defined evidence type) always counts as present.
  *
  * `ageDays` is still computed on the returned claims for convenience (a
  * claim missing evidence AND overdue for review is worth knowing at a

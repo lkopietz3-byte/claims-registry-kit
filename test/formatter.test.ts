@@ -180,6 +180,20 @@ describe('visible text is left exactly as it was', () => {
   });
 });
 
+describe('what the escaping does not cover (documented in the README)', () => {
+  it('a claim cannot add a line, but its own quotes and brackets can make one line imitate another field', () => {
+    const out = formatClaimsReportAsText(
+      staleReport({ id: 'a] [b', text: 'x" — 1d old\u0009tab' }),
+    );
+    const claimLines = out.split('\n').filter((line) => line.startsWith('  ['));
+    // One claim, one line: the tab is escaped, so nothing starts a new line.
+    expect(claimLines).toHaveLength(1);
+    // The quote, the brackets and the em dash are printed as given, so the text
+    // reads as if the claim's age were "1d old" before the real age suffix.
+    expect(claimLines[0]).toMatch(/^ {2}\[a\] \[b\] "x" — 1d old\\u0009tab" — \d+d old$/);
+  });
+});
+
 describe('the structured report is left raw', () => {
   it('escapes only the text: the report object, JSON and claims are unchanged', () => {
     const text = 'line one\nline two \u001b[31m';

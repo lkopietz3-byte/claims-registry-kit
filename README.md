@@ -209,7 +209,8 @@ a map, not the whole story.
 
 - **`Claim<EvidenceRef = string>`** — `{ id, text, evidenceRef, verifiedAt, verifiedBy? }`.
   The record you build; `EvidenceRef` defaults to `string` but can be any
-  shape you supply. A claim must be a plain object (or one with a `null`
+  shape you supply (a value that is falsy or blank counts as no evidence, see
+  Honest limits). A claim must be a plain object (or one with a `null`
   prototype): a `Map`, `Date`, array or class instance is rejected with a
   `TypeError` instead of being read as a claim with no fields.
 - **`IsoDateString`** — a `string` alias for `verifiedAt`: a bare
@@ -331,12 +332,16 @@ characters).
   can change its status. There is no automatic deep clone, freeze or
   serialization. Copy it yourself first if that matters.
 - **The text escaping is display-only.** `formatClaimsReportAsText` escapes
-  control, line-break and bidi formatting characters so the text cannot forge
-  structure or send terminal escapes. It does not stop invisible characters
-  that are not on that list (a zero-width space in an id still prints as
-  nothing), and a string that literally contains `\u001b` reads the same as
-  one that contains ESC. It is not an HTML or Markdown escaper: escape it
-  again for whatever renders it.
+  control, line-break and bidi formatting characters, so a claim cannot start
+  a new line, forge a report heading or send a terminal escape. That is all it
+  does. Quotes are not escaped: a claim's text is printed inside double quotes
+  and can contain its own quote and text such as ` — 1d old`, so one claim line
+  can be made to read as if it said something else. Square brackets in an id
+  are not escaped either. Invisible characters that are not on the escaped
+  list are left alone (a zero-width space in an id still prints as nothing),
+  and a string that literally contains `\u001b` reads the same as one that
+  contains ESC. It is not an HTML or Markdown escaper: escape it again for
+  whatever renders it.
 - **No persistence, no scheduling, no notifications.** `createClaimsRegistry`
   is in-memory only and resets on restart. There's no built-in file
   format, database schema, cron, Slack webhook, or dashboard. Bring your
@@ -347,9 +352,13 @@ characters).
   assume it's a file path, a URL, or anything specific — `Claim<EvidenceRef
   = string>` lets you supply a richer type (e.g. `{ kind: 'test' | 'url'
   | 'file'; ref: string }`) if a plain string isn't enough for your system.
-  A non-string, non-array value (your own evidence object, for example) is
-  always treated as present without inspecting it, since this library
-  doesn't know its shape.
+  It never opens, fetches or interprets the value. Only these are read as
+  no evidence: `null`, `undefined`, `false`, `0`, `-0`, `NaN`, `0n`, an empty
+  or visibly blank string, and a list with no present entry. The same rule applies to each entry inside a
+  list, so `[false]`, `[0]` and `['']` are missing. Every other value (an
+  object, `true`, a non-zero number, a function, a symbol) counts as present
+  without inspection, so an object whose `ref` field is empty still counts as
+  present: this library doesn't know its shape.
 
 ## Relationship to sibling kits
 
