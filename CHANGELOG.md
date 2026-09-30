@@ -27,10 +27,25 @@ shape and the status rules are unchanged.
   characters (C0, DEL, C1, including CR, LF and ESC), U+2028, U+2029 and bidi
   formatting characters (U+061C, U+200E, U+200F, U+202A-202E, U+2066-2069) in
   ids, claim text and the other printed fields become visible escapes such as
-  `\u001b`. A newline in a claim can no longer forge a second report heading
-  and an ESC byte no longer reaches the terminal. Visible text is unchanged,
+  `\u001b`. A newline in a claim can no longer forge a second report line or
+  heading and an ESC byte no longer reaches the terminal. Quotes, square
+  brackets and other invisible characters are not escaped (see the README's
+  Honest limits), so this stops new lines and headings, not every way a claim
+  can make its own line read differently. Visible text is unchanged,
   nothing is truncated, and the report object stays raw. String ids and text
   with no such characters print exactly as before.
+- **`evidenceRef` must be no evidence, a string or an array.** `null`, `undefined`
+  and `false` now mean no evidence, so the claim is `'unverified'`. Any other
+  top-level value that is not a string or an array (`0`, `NaN`, `true`, an
+  object, a `Map`, a function, a symbol, a bigint) throws a `TypeError` in
+  `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked` and
+  `generateClaimsReport`. Before, `false`, `0` and `NaN` (and any object) counted
+  as present evidence, so a claim with `evidenceRef: false` and a fresh date came
+  back `'current'`. The element rules inside an array are unchanged (a
+  non-string, non-nullish element still counts as present). `registerClaim`
+  does not read `evidenceRef`, so the error appears when a check runs. A
+  caller-defined evidence object (`Claim<{ kind, ref }>`) therefore no longer
+  works: pass a string or a list of strings.
 - **A claim must be a plain object.** A `Map`, `Set`, `Date`, `RegExp`, array
   or class instance (or a boxed primitive) passed as a claim now throws a
   `TypeError` in `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked`,
