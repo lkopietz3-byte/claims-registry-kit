@@ -1,24 +1,24 @@
-# Review and launch readiness
+# Review and consumer integration readiness
 
-Prepared September 30, 2026 against GitHub main `9211b97e9134640bbb308f4b3859dc1895d3480a`. This is a preparation plan, not a completed product audit or marketing certification.
+Updated September 30, 2026 against main `6d420a648be6ea40973c298a80a30043c90d4772`. The npm registry reported `claims-registry-kit@0.3.0` on that date. This is review guidance for future changes and a consumer integration task; it is not a product audit, registry integrity check or marketing certification.
 
 ## Review cadence
 
-Keep automatic code reviews off during preparation. Request one focused `@codex review` on a meaningful candidate PR after relevant checks; repeat only when material changes invalidate that review. Do not add a recurring review schedule.
+Request one focused review on a meaningful candidate PR after relevant checks; repeat when material changes invalidate that review. Review cadence and automation settings should reflect the current development stage and available review capacity.
 
 When this repo enters sustained launch or customer-facing development, enable its repository setting individually with **All PRs / On PR open / Exhaustive Off**. Keep the personal automatic default and credit-funded reviews off. Inspect the first result before expanding cadence. Review guidance lives in the root [AGENTS.md](../AGENTS.md); it supplements existing tests and release requirements.
 
-On September 30, 2026, this repository was verified to **Follow personal preferences**, with personal automatic code reviews, exhaustive reviews and credit-funded reviews off. These settings are managed in ChatGPT; this file does not activate them.
+Check current repository and personal review settings before changing review automation. This document does not activate a setting.
 
-## Next preparation task
+## Next consumer integration task
 
-At the next release milestone, verify a packed-consumer registry with missing evidence, explicit-offset/bare-date boundaries and duplicate IDs. Check that marketing status labels refer to presence/freshness rather than source truth.
+For the next consumer integration, verify a packed-consumer registry with missing evidence, explicit-offset/bare-date boundaries and duplicate IDs. Check that marketing status labels refer to presence/freshness rather than source truth.
 
 Finish condition: The real API returns the documented classifications and registry errors, and the receipt states the chosen clock, shallow-copy boundary and evidence-reference limits.
 
 ## Declared verification commands
 
-Read from the inspected main's `package.json`. These are declared gates, not execution receipts; see the candidate PR for hosted-check results and report unavailable checks explicitly. Use focused checks during implementation and the existing release gates on the frozen candidate.
+Read from the current `package.json`. These are declared gates, not execution receipts. Use focused checks during implementation and the existing release gates on the frozen candidate; report unavailable checks explicitly.
 
 - `npm run verify`: `npm run lint && npm run typecheck && npm test && npm run build && npm run verify:package`
 - `npm run lint`: `eslint . --max-warnings=0`
