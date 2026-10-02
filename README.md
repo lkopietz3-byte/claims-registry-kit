@@ -1,5 +1,7 @@
 # Claims Registry Kit
 
+**[Try it in your browser →](https://lkopietz3-byte.github.io/honesty-kits/#claims-registry-kit)** · Part of [honesty kits](https://github.com/lkopietz3-byte/honesty-kits), a family of small checks for the claims an AI product makes.
+
 Claims Registry Kit is a small, dependency-free TypeScript library for
 tracking public-facing claims alongside an evidence reference and a
 last-verified date. It catches the structural problems that let product copy
