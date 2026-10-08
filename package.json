@@ -1,6 +1,6 @@
 {
   "name": "claims-registry-kit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A dependency-free TypeScript library for tracking public claims, their evidence references, and their review freshness.",
   "keywords": [
     "product-claims",
@@ -10,7 +10,8 @@
     "staleness-check",
     "compliance",
     "ci",
-    "honesty"
+    "honesty",
+    "honesty-kits"
   ],
   "author": "Lucas Kopietz",
   "license": "MIT",
@@ -18,7 +19,7 @@
     "type": "git",
     "url": "git+https://github.com/lkopietz3-byte/claims-registry-kit.git"
   },
-  "homepage": "https://github.com/lkopietz3-byte/claims-registry-kit#readme",
+  "homepage": "https://lkopietz3-byte.github.io/honesty-kits/#claims-registry-kit",
   "bugs": {
     "url": "https://github.com/lkopietz3-byte/claims-registry-kit/issues"
   },
