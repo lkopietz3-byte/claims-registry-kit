@@ -1,5 +1,5 @@
-import { displayValue, escapeForDisplay, normalizeForMatch } from './text.js';
-import { evaluateClaim } from './checks.js';
+import { displayValue, escapeForDisplay, isVisiblyBlank, normalizeForMatch } from './text.js';
+import { evaluate } from './checks.js';
 import { readPlaceholders } from './placeholders.js';
 import { assertMaxAgeDays, readNow, snapshotClaim } from './validate.js';
 import type { ClaimsRegistry } from './registry.js';
@@ -179,10 +179,9 @@ function findAll(text: string, needles: readonly string[]): boolean[] {
     terminal[node] = n;
   }
 
-  // Failure and dictionary links, shallowest nodes first.
+  // Failure links, shallowest nodes first.
   const nodeCount = parent.length;
   const fail: number[] = new Array<number>(nodeCount).fill(0);
-  const dict: number[] = new Array<number>(nodeCount).fill(-1);
   const byDepth: number[][] = [];
   for (let v = 1; v < nodeCount; v += 1) {
     const d = depth[v];
@@ -200,9 +199,40 @@ function findAll(text: string, needles: readonly string[]): boolean[] {
         f = edges.get(f * 65536 + unit) ?? 0;
       }
       fail[v] = f;
-      dict[v] = (terminal[f]) >= 0 ? f : (dict[f]);
     }
   }
+
+  // Two chains of "the next shorter claim text that ends here":
+  // `linkAll` over every claim, `linkSafe` over claims whose last character is
+  // not a word character (those need no check on what follows). Each chain
+  // skips claims already found, with path compression, so a claim that has
+  // been seen costs nothing after that.
+  const linkAll: number[] = new Array<number>(nodeCount).fill(-1);
+  const linkSafe: number[] = new Array<number>(nodeCount).fill(-1);
+  const isSafe = (node: number): boolean => {
+    const n = terminal[node];
+    return n >= 0 && !(edgeInfo[n]).lastWord;
+  };
+  for (const level of byDepth) {
+    if (level === undefined) continue;
+    for (const v of level) {
+      const f = fail[v];
+      linkAll[v] = (terminal[f]) >= 0 ? f : (linkAll[f]);
+      linkSafe[v] = isSafe(f) ? f : (linkSafe[f]);
+    }
+  }
+  const live = (link: number[], head: number): number => {
+    let r = head;
+    while (r >= 0 && found[terminal[r]] === true) r = link[r];
+    // Compress: every node walked now points straight at the first live one.
+    let u = head;
+    while (u >= 0 && u !== r) {
+      const next = link[u];
+      link[u] = r;
+      u = next;
+    }
+    return r;
+  };
 
   let remaining = needles.length;
   let state = 0;
@@ -210,17 +240,22 @@ function findAll(text: string, needles: readonly string[]): boolean[] {
     const unit = text.charCodeAt(i);
     while (state !== 0 && !edges.has(state * 65536 + unit)) state = fail[state];
     state = edges.get(state * 65536 + unit) ?? 0;
-    let v = (terminal[state]) >= 0 ? state : (dict[state]);
+    const end = i + 1;
+    // What follows decides, once for this position, which chain can still
+    // match: inside a run of word characters only claims that end in a
+    // non-word character can.
+    const afterWord = end < text.length && isWord(text.codePointAt(end) as number);
+    const link = afterWord ? linkSafe : linkAll;
+    const own = afterWord ? isSafe(state) : (terminal[state]) >= 0;
+    let v = own ? state : (link[state]);
+    v = live(link, v);
     while (v >= 0) {
       const n = terminal[v];
-      if (!found[n]) {
-        const end = i + 1;
-        if (standsAlone(text, end - (lengths[n]), end, edgeInfo[n])) {
-          found[n] = true;
-          remaining -= 1;
-        }
+      if (standsAlone(text, end - (lengths[n]), end, edgeInfo[n])) {
+        found[n] = true;
+        remaining -= 1;
       }
-      v = dict[v];
+      v = live(link, link[v]);
     }
   }
   return found;
@@ -244,7 +279,10 @@ function readIds(claimIds: unknown): string[] {
   if (!Array.isArray(claimIds)) {
     throw new TypeError(`${PREFIX}claimIds must be an array of strings (received ${displayValue(claimIds)})`);
   }
-  const length = (claimIds as unknown[]).length;
+  const length: unknown = (claimIds as unknown[]).length;
+  if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0) {
+    throw new TypeError(`${PREFIX}claimIds has an invalid length (received ${displayValue(length)})`);
+  }
   if (length === 0) {
     throw new RangeError(
       `${PREFIX}claimIds must name at least one claim (an empty list would pass without checking anything)`,
@@ -309,12 +347,13 @@ export function checkAppearsIn<EvidenceRef = string>(
   }
   const opts: AppearsInOptions = { ...options };
   assertMaxAgeDays(opts.maxAgeDays);
-  const nowMs = readNow(opts.now ?? new Date());
+  const nowMs = readNow(opts.now === undefined ? new Date() : opts.now);
   if (opts.ignoreCase !== undefined && typeof opts.ignoreCase !== 'boolean') {
     throw new TypeError(`${PREFIX}options.ignoreCase must be a boolean`);
   }
   const ignoreCase = opts.ignoreCase === true;
-  readPlaceholders(opts); // validate placeholderRefs up front
+  // Resolved once: every claim is judged against this one snapshot.
+  const placeholders = readPlaceholders(opts);
   if (typeof text !== 'string') {
     throw new TypeError(`${PREFIX}text must be a string (received ${displayValue(text)})`);
   }
@@ -338,11 +377,11 @@ export function checkAppearsIn<EvidenceRef = string>(
       continue;
     }
     const claimText: unknown = claim.text;
-    const evaluated = evaluateClaim(claim, opts.maxAgeDays, new Date(nowMs), opts);
+    const evaluated = evaluate(claim, opts.maxAgeDays, nowMs, placeholders);
     const entry: Entry = { id, unknown: false, claimStatus: evaluated.status };
     if (typeof claimText === 'string') {
       const needle = normalizeForMatch(claimText, ignoreCase);
-      if (needle.length > 0) {
+      if (!isVisiblyBlank(claimText) && needle.length > 0) {
         entry.needle = needle;
         if (!needleIndex.has(needle)) {
           needleIndex.set(needle, needles.length);

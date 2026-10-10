@@ -194,7 +194,7 @@ export function evaluateClaim<EvidenceRef = string>(
  * arguments and pass a one-time copy of the claim, so the fields judged here
  * are the fields returned.
  */
-function evaluate<EvidenceRef>(
+export function evaluate<EvidenceRef>(
   claim: Claim<EvidenceRef>,
   maxAgeDays: number,
   nowMs: number,

@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   boundaries. One linear pass for all claims. Also exports the types
   `AppearsInVerdict`, `AppearsInResult`, `AppearsInReport`, `AppearsInOptions`
   and `ClaimLookup`.
+  Invisible characters are removed before normalization, so a zero-width
+  character between a letter and its accent no longer blocks a match;
+  control-only claim text never matches; `now: null` and an invalid id-list
+  length throw; the placeholder policy is read once per call.
 
 ### Fixed
 

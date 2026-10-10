@@ -373,3 +373,88 @@ describe('scaling', () => {
     expect(r.ms).toBeLessThan(2000);
   });
 });
+
+describe('review round: verdict rows', () => {
+  const registry = registryWith(claim({ id: 'a', text: 'Alpha' }));
+
+  it('R1: an explicit now of null, a string or a number throws like evaluateClaim', () => {
+    for (const now of [null, 'x', 5]) {
+      expect(() => checkAppearsIn(registry, 'Alpha', ['a'], { maxAgeDays: 1, now: now as never })).toThrow(TypeError);
+    }
+    expect(checkAppearsIn(registry, 'Alpha', ['a'], { maxAgeDays: 100000, now: undefined }).ok).toBe(true);
+  });
+
+  it('R2: placeholderRefs entries are read once, not once per claim', () => {
+    const r = registryWith(
+      claim({ id: 'p1', text: 'One', evidenceRef: 'pending' }),
+      claim({ id: 'p2', text: 'Two', evidenceRef: 'pending' }),
+    );
+    let reads = 0;
+    const refs = new Proxy(['pending'], {
+      get(t, key, receiver) {
+        if (key === '0') {
+          reads += 1;
+          return reads === 1 ? 'pending' : 'unused';
+        }
+        return Reflect.get(t, key, receiver) as unknown;
+      },
+    });
+    const out = checkAppearsIn(r, 'One Two', ['p1', 'p2'], { ...OPTS, placeholderRefs: refs });
+    expect(out.results.map((x) => x.verdict)).toEqual(['stale', 'stale']);
+  });
+
+  it('R3: an id list whose length is negative, NaN or undefined throws', () => {
+    for (const bad of [-1, Number.NaN, undefined, 1.5, Infinity]) {
+      const ids = new Proxy(['a'], {
+        get(t, key, receiver) {
+          if (key === 'length') return bad;
+          return Reflect.get(t, key, receiver) as unknown;
+        },
+      });
+      expect(() => checkAppearsIn(registry, 'Alpha', ids, OPTS)).toThrow();
+      expect(() => assertAppearsIn(registry, 'Alpha', ids, OPTS)).toThrow();
+    }
+  });
+
+  it('R5: control-only claim text is missing', () => {
+    for (const t of ['\u0000', '\u0001\u0002', '\u007f', '\u0000 ​']) {
+      const fake = { getClaim: () => claim({ id: 'p', text: t }) };
+      expect(checkAppearsIn(fake, `x ${t} y`, ['p'], OPTS).results[0].verdict).toBe('missing');
+    }
+  });
+
+  it('R6: an invisible character between a letter and its combining mark', () => {
+    expect(verdictOf('Cafe​́ included', 'Café included')).toBe('present');
+    expect(verdictOf('Café included', 'Cafe​́ included')).toBe('present');
+    expect(verdictOf('Cafe­́ included', 'Café included')).toBe('present');
+  });
+});
+
+describe('review round: nested claims scale linearly', () => {
+  function nested(count: number, sep: string) {
+    const registry = createClaimsRegistry();
+    const ids: string[] = [];
+    for (let i = 1; i <= count; i += 1) {
+      registry.registerClaim(claim({ id: `n${String(i)}`, text: Array.from({ length: i }, () => 'a').join(sep) }));
+      ids.push(`n${String(i)}`);
+    }
+    return { registry, ids };
+  }
+
+  it('600 nested claims against a long uninterrupted run (100k and 400k)', () => {
+    const { registry, ids } = nested(600, '');
+    const small = cpuMs(() => checkAppearsIn(registry, 'a'.repeat(100_000), ids, OPTS));
+    const large = cpuMs(() => checkAppearsIn(registry, 'a'.repeat(400_000), ids, OPTS));
+    expect(small.ms).toBeLessThan(1500);
+    expect(large.ms).toBeLessThan(3000);
+    expect(small.value.results.filter((x) => x.verdict === 'present')).toHaveLength(0);
+  });
+
+  it('600 nested space-separated claims against "a a a ..." (100k)', () => {
+    const { registry, ids } = nested(600, ' ');
+    const page = 'a '.repeat(50_000);
+    const { value, ms } = cpuMs(() => checkAppearsIn(registry, page, ids, OPTS));
+    expect(ms).toBeLessThan(1500);
+    expect(value.results.every((x) => x.verdict === 'present')).toBe(true);
+  });
+});

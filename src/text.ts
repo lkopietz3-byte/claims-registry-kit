@@ -122,6 +122,7 @@ export function spellOut(id: string): string {
   });
 }
 
+const STRIP_INVISIBLE = /\p{Default_Ignorable_Code_Point}/gu;
 const MATCH_WHITESPACE = /^\p{White_Space}$/u;
 const MATCH_INVISIBLE = /^\p{Default_Ignorable_Code_Point}$/u;
 
@@ -134,7 +135,9 @@ const MATCH_INVISIBLE = /^\p{Default_Ignorable_Code_Point}$/u;
  * over the string.
  */
 export function normalizeForMatch(text: string, ignoreCase: boolean): string {
-  let source = text.normalize('NFKC');
+  // Invisible characters go first: one between a letter and its combining
+  // mark would otherwise stop NFKC from composing them.
+  let source = text.replace(STRIP_INVISIBLE, '').normalize('NFKC');
   if (ignoreCase) source = source.toLowerCase().normalize('NFKC');
   const out: string[] = [];
   let pendingSpace = false;

@@ -237,8 +237,13 @@ become straight quotes, and dash and minus variants become `-`. Case matters
 unless you pass `ignoreCase: true`. A match has to stand on word boundaries:
 `uptime` is not found in `uptimes`, and `20` is not found in `120`, `20.5`,
 `20,000` or `1.20`. A hyphen, slash or apostrophe counts as a boundary, so
-`free` is found inside `free-trial`. All claims are searched in one pass, so
-the cost is linear in the page text plus the claim texts.
+`free` is found inside `free-trial`. All claims are searched in one pass, and a claim stops costing anything once
+it is found. Cost is linear in the page text plus the claim texts for ordinary
+and for nested wordings (`a`, `a a`, `a a a`, ... or `a`, `aa`, `aaa`, ...). One
+shape is not strictly linear: claims whose texts are suffixes of each other, all
+ending in punctuation, against a page where they keep failing the start
+boundary. The extra work per page character is then at most the number of such
+nested claims, which you control through what you register.
 
 Not covered: placeholders such as `{rate}`. The registry stores no value beside
 a claim's text, so there is nothing to substitute; register the final wording,
