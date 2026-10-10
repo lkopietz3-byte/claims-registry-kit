@@ -121,3 +121,38 @@ export function spellOut(id: string): string {
     return code.length > 4 ? `\\u{${code}}` : `\\u${code}`;
   });
 }
+
+const MATCH_WHITESPACE = /^\p{White_Space}$/u;
+const MATCH_INVISIBLE = /^\p{Default_Ignorable_Code_Point}$/u;
+
+/**
+ * The form two pieces of text share when a reader sees the same words:
+ * NFKC-normalized, optionally lower-cased, invisible characters (zero-width
+ * spaces, soft hyphens, ...) dropped, every run of whitespace turned into one
+ * space, curly and other quote marks turned into `'` and `"`, and dash and
+ * minus variants turned into `-`. Surrounding whitespace is trimmed. One pass
+ * over the string.
+ */
+export function normalizeForMatch(text: string, ignoreCase: boolean): string {
+  let source = text.normalize('NFKC');
+  if (ignoreCase) source = source.toLowerCase().normalize('NFKC');
+  const out: string[] = [];
+  let pendingSpace = false;
+  for (const ch of source) {
+    if (MATCH_WHITESPACE.test(ch)) {
+      pendingSpace = out.length > 0;
+      continue;
+    }
+    if (MATCH_INVISIBLE.test(ch)) continue;
+    if (pendingSpace) {
+      out.push(' ');
+      pendingSpace = false;
+    }
+    const code = ch.codePointAt(0) as number;
+    if ((code >= 0x2018 && code <= 0x201b) || code === 0x2032 || code === 0x02bc) out.push("'");
+    else if ((code >= 0x201c && code <= 0x201f) || code === 0x2033) out.push('"');
+    else if ((code >= 0x2010 && code <= 0x2015) || code === 0x2212 || code === 0x2043 || code === 0xfe58 || code === 0xfe63) out.push('-');
+    else out.push(ch);
+  }
+  return out.join('');
+}

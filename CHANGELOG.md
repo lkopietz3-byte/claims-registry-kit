@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`checkAppearsIn` and `assertAppearsIn`.** Check that published text (a pricing
+  or disclosure page) contains the current wording of registered claims.
+  Verdicts per claim: `present`, `stale` (shown, but the claim is no longer
+  current), `missing` and `unknown-id`. Text is compared after NFKC, whitespace
+  folding, dropping invisible characters and folding quotes and dashes; case
+  matters unless `ignoreCase` is set; matches must sit on word and number
+  boundaries. One linear pass for all claims. Also exports the types
+  `AppearsInVerdict`, `AppearsInResult`, `AppearsInReport`, `AppearsInOptions`
+  and `ClaimLookup`.
+
 ### Fixed
 
 - **A claim could stay `'current'` up to 24 hours past `maxAgeDays`.** The age

@@ -19,3 +19,12 @@ export {
   formatClaimsReportAsText,
 } from './checks.js';
 export type { ClaimsReport } from './checks.js';
+
+export { checkAppearsIn, assertAppearsIn } from './appears.js';
+export type {
+  AppearsInVerdict,
+  AppearsInResult,
+  AppearsInReport,
+  AppearsInOptions,
+  ClaimLookup,
+} from './appears.js';

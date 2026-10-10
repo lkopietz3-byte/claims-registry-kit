@@ -200,6 +200,53 @@ you hand it, once, when you call it. If you want it on a schedule, wire the
 script above into whatever scheduler you already use — that's outside this
 library's job.
 
+### Checking that a page shows the registered wording
+
+`checkAppearsIn` answers one question: does this published text contain the
+current wording of these registered claims? Use it on a pricing or disclosure
+page so the copy cannot drift from the registry.
+
+```ts
+import { assertAppearsIn, checkAppearsIn } from 'claims-registry-kit';
+
+// In a test or CI step: throws an Error that lists every claim that is not shown.
+assertAppearsIn(registry, pricingPageText, ['uptime', 'refund-window'], { maxAgeDays: 90 });
+
+// Or read the verdicts yourself.
+const { ok, results } = checkAppearsIn(registry, pricingPageText, ['uptime'], { maxAgeDays: 90 });
+// results: [{ id: 'uptime', verdict: 'present', claimStatus: 'current' }]
+```
+
+Each distinct id gets one verdict, in first-seen order:
+
+| Verdict | Meaning |
+| --- | --- |
+| `present` | The claim's text is on the page and the claim is `'current'`. |
+| `stale` | The text is on the page, but the claim is not `'current'` (`claimStatus` says `'stale'` or `'unverified'`). Showing it is the problem. |
+| `missing` | The text is not on the page (or only inside a longer word or number), or the claim's text is not a string or is blank. |
+| `unknown-id` | No claim is registered under exactly that id. A look-alike spelling (trailing space, zero-width character, other case) is unknown, not matched. |
+
+`ok` is true only when every verdict is `present`. An empty id list throws a
+`RangeError`, because it would pass having checked nothing. `maxAgeDays` is
+required, and `now` and `placeholderRefs` work as in `evaluateClaim`.
+
+How text is compared: both sides are NFKC-normalized, runs of whitespace
+(including line breaks and no-break spaces) become one space, invisible
+characters such as zero-width spaces and soft hyphens are dropped, curly quotes
+become straight quotes, and dash and minus variants become `-`. Case matters
+unless you pass `ignoreCase: true`. A match has to stand on word boundaries:
+`uptime` is not found in `uptimes`, and `20` is not found in `120`, `20.5`,
+`20,000` or `1.20`. A hyphen, slash or apostrophe counts as a boundary, so
+`free` is found inside `free-trial`. All claims are searched in one pass, so
+the cost is linear in the page text plus the claim texts.
+
+Not covered: placeholders such as `{rate}`. The registry stores no value beside
+a claim's text, so there is nothing to substitute; register the final wording,
+or one claim per rendered variant. Also not covered: HTML (strip tags first,
+or `<b>` between words will make a claim `missing`), meaning (a page that says
+"we do not offer free trials" still shows the words `free trials`), and where
+on the page the text appears.
+
 ## API reference
 
 Every export, briefly. Full behavior and edge cases are in each function's
@@ -254,6 +301,10 @@ a map, not the whole story.
   alone and nothing is truncated. The `report` object itself stays raw, so
   read ids and text from it, not from the printed string, for anything other
   than showing to a person. The escaping is not reversible.
+- **`checkAppearsIn(registry, text, claimIds, options)`** → `{ ok, results }` and
+  **`assertAppearsIn(...)`** (same arguments, throws an `Error` listing each
+  claim that is not `present`, returns the report otherwise): see "Checking that
+  a page shows the registered wording". `registry` only needs `getClaim(id)`.
 - **`createClaimsRegistry<EvidenceRef>()`** → `ClaimsRegistry` — an optional
   in-memory store: `registerClaim` (throws on a duplicate `id`, or on one that
   only looks the same), `getClaims`,
@@ -428,6 +479,7 @@ characters).
 src/
   types.ts        Claim, IsoDateString, ClaimStatus, EvaluatedClaim
   registry.ts     createClaimsRegistry() — minimal in-memory registration
+  appears.ts      checkAppearsIn, assertAppearsIn (page text vs registered wording)
   checks.ts       evaluateClaim, checkStaleness, checkEvidenceLinked,
                   generateClaimsReport, formatClaimsReportAsText
   placeholders.ts DEFAULT_PLACEHOLDER_REFS and the internal placeholder matcher
