@@ -462,3 +462,108 @@ describe('verdict table: self-hunt probes', () => {
     }).not.toThrow();
   });
 });
+
+// Pathological shapes. The first draft trimmed ids with /^\s+|\s+$/g, which
+// retries the trailing alternative at every position of an inner whitespace
+// run: an id of 40,000 inner spaces blocked registerClaim for about 37 seconds
+// (under 1 ms on the base). Every normalization and trimming step must be
+// linear in the input, whatever the shape.
+describe('verdict table: pathological shapes stay linear', () => {
+  function timed(fn: () => void): number {
+    const started = Date.now();
+    fn();
+    return Date.now() - started;
+  }
+
+  function register(id: string, claimsRegistry = createClaimsRegistry()): number {
+    return timed(() => {
+      claimsRegistry.registerClaim(claim({ id }));
+    });
+  }
+
+  it('registers an id with a 40,000-space inner run in well under a second', () => {
+    expect(register('a' + ' '.repeat(40_000) + 'b')).toBeLessThan(200);
+  });
+
+  it('keeps inner spacing distinct at that size: 40,000 and 39,999 inner spaces are different ids', () => {
+    const registry = createClaimsRegistry();
+    registry.registerClaim(claim({ id: 'a' + ' '.repeat(40_000) + 'b' }));
+    expect(() => {
+      registry.registerClaim(claim({ id: 'a' + ' '.repeat(39_999) + 'b' }));
+    }).not.toThrow();
+    expect(() => {
+      registry.registerClaim(claim({ id: 'a' + ' '.repeat(40_000) + 'b\u200b' }));
+    }).toThrow(/looks the same/);
+  });
+
+  it.each([
+    ['many mixed invisible and space characters inside', 'a' + ' \t\u200b\u00ad\u2003\u3164'.repeat(20_000) + 'b'],
+    ['alternating spaces and zero-width spaces inside', 'a' + ' \u200b'.repeat(40_000) + 'b'],
+    ['alternating zero-width joiners and no-break spaces inside', 'a' + '\u200d\u00a0'.repeat(40_000) + 'b'],
+    ['a long leading run of whitespace', ' '.repeat(200_000) + 'a'],
+    ['a long trailing run of whitespace', 'a' + ' '.repeat(200_000)],
+    ['long runs at both ends and inside', ' '.repeat(100_000) + 'a' + ' '.repeat(100_000) + 'b' + ' '.repeat(100_000)],
+    ['a long trailing run of invisible characters', 'a' + '\u200b'.repeat(200_000)],
+    ['a long run of combining marks', 'e' + '\u0301'.repeat(100_000)],
+    ['an id that is almost all whitespace with one visible character at the end', ' '.repeat(200_000) + '.'],
+  ])('registers %s quickly, and a look-alike of it is rejected quickly', (_label, id) => {
+    const registry = createClaimsRegistry();
+    expect(register(id, registry)).toBeLessThan(1_000);
+    const lookAlike = id + '\u200b';
+    const elapsed = timed(() => {
+      expect(() => {
+        registry.registerClaim(claim({ id: lookAlike }));
+      }).toThrow(/looks the same/);
+    });
+    expect(elapsed).toBeLessThan(1_000);
+  });
+
+  it('builds the look-alike error for long ids quickly', () => {
+    const registry = createClaimsRegistry();
+    registry.registerClaim(claim({ id: 'a' + ' '.repeat(40_000) + 'b' }));
+    expect(
+      timed(() => {
+        expect(() => {
+          registry.registerClaim(claim({ id: 'a' + ' '.repeat(40_000) + 'b\u200b' }));
+        }).toThrow(/looks the same/);
+      }),
+    ).toBeLessThan(1_000);
+  });
+
+  it('generateClaimsReport validates and formats a 40,000-space id quickly', () => {
+    const id = 'a' + ' '.repeat(40_000) + 'b';
+    expect(
+      timed(() => {
+        const report = generateClaimsReport([claim({ id })], 90, NOW);
+        expect(report.counts.total).toBe(1);
+      }),
+    ).toBeLessThan(1_000);
+  });
+
+  it.each([
+    ['a placeholder with a 200,000-space inner run', 'see' + ' '.repeat(200_000) + 'above', 'unverified'],
+    ['a placeholder padded by alternating spaces and zero-width spaces', 'TODO' + ' \u200b'.repeat(100_000), 'unverified'],
+    ['a placeholder with invisible characters at both ends', '\u200b'.repeat(200_000) + 'tbd' + '\u200b'.repeat(200_000), 'unverified'],
+    ['a real reference with a 200,000-space inner run', 'docs' + ' '.repeat(200_000) + 'a.md', 'current'],
+    ['a real reference after a long whitespace and invisible run', ' \u200b'.repeat(100_000) + 'docs/a.md', 'current'],
+    ['a real reference with many mixed invisible characters', 'docs' + '\u00ad\t\u2003'.repeat(100_000) + 'a.md', 'current'],
+    ['a 5,000,000-character reference of one repeated letter', 'x'.repeat(5_000_000), 'current'],
+    ['a 5,000,000-character run of spaces then a placeholder', ' '.repeat(5_000_000) + 'none', 'unverified'],
+    ['a long run of hyphens (not the single-dash placeholder)', '-'.repeat(1_000_000), 'current'],
+  ])('judges %s quickly', (_label, evidenceRef, expected) => {
+    let status = '';
+    const elapsed = timed(() => {
+      status = evaluateClaim(looseClaim({ evidenceRef }), 90, NOW).status;
+    });
+    expect(status).toBe(expected);
+    expect(elapsed).toBeLessThan(2_000);
+  });
+
+  it('judges a configured placeholder list with long entries quickly', () => {
+    const options = { placeholderRefs: ['x' + ' '.repeat(100_000) + 'y', ' \u200b'.repeat(100_000)] };
+    const elapsed = timed(() => {
+      expect(evaluateClaim(looseClaim({ evidenceRef: 'x y' }), 90, NOW, options).status).toBe('unverified');
+    });
+    expect(elapsed).toBeLessThan(2_000);
+  });
+});

@@ -73,7 +73,22 @@ export function displayValue(value: unknown): string {
 
 const LOOK_ALIKE_INVISIBLE = /\p{Default_Ignorable_Code_Point}/gu;
 const NON_WHITESPACE_CONTROL = /(?!\p{White_Space})\p{Cc}/gu;
-const OUTER_WHITESPACE = /^\p{White_Space}+|\p{White_Space}+$/gu;
+const WHITESPACE_CHAR = /^\p{White_Space}$/u;
+
+/**
+ * Trim whitespace from both ends with two index scans. A regex such as
+ * `/^\s+|\s+$/g` retries its trailing alternative at every position inside a
+ * long inner run of whitespace, which is quadratic: an id of 40,000 inner
+ * spaces took about 37 seconds. The scans below touch each character at most
+ * once.
+ */
+function trimWhitespace(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && WHITESPACE_CHAR.test(text.charAt(start))) start += 1;
+  while (end > start && WHITESPACE_CHAR.test(text.charAt(end - 1))) end -= 1;
+  return text.slice(start, end);
+}
 
 /**
  * The form two ids share when they read the same: invisible characters
@@ -82,11 +97,9 @@ const OUTER_WHITESPACE = /^\p{White_Space}+|\p{White_Space}+$/gu;
  * whitespace are kept, so `Sync` and `sync`, or `a b` and `ab`, stay different.
  */
 export function lookAlikeKey(id: string): string {
-  return id
-    .replace(LOOK_ALIKE_INVISIBLE, '')
-    .replace(NON_WHITESPACE_CONTROL, '')
-    .normalize('NFC')
-    .replace(OUTER_WHITESPACE, '');
+  return trimWhitespace(
+    id.replace(LOOK_ALIKE_INVISIBLE, '').replace(NON_WHITESPACE_CONTROL, '').normalize('NFC'),
+  );
 }
 
 // Everything that can make two different strings look alike, spelled out so an
