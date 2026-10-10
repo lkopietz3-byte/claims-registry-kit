@@ -138,7 +138,14 @@ export function normalizeForMatch(text: string, ignoreCase: boolean): string {
   // Invisible characters go first: one between a letter and its combining
   // mark would otherwise stop NFKC from composing them.
   let source = text.replace(STRIP_INVISIBLE, '').normalize('NFKC');
-  if (ignoreCase) source = source.toLowerCase().normalize('NFKC');
+  if (ignoreCase) {
+    // toLowerCase turns a capital sigma into a final sigma only at the end of
+    // a word, so the same letters fold differently depending on what follows.
+    // Folding final sigma to the ordinary one makes the result depend only on
+    // the letters themselves. (The other context-dependent lower-casing rules
+    // are locale-specific, and no locale is passed.)
+    source = source.toLowerCase().replace(/\u03c2/g, '\u03c3').normalize('NFKC');
+  }
   const out: string[] = [];
   let pendingSpace = false;
   for (const ch of source) {

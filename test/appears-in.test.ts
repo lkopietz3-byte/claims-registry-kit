@@ -536,3 +536,26 @@ describe('round 3: numeric nesting scales linearly', () => {
     });
   }
 });
+
+describe('round 4: Greek sigma is context-independent', () => {
+  const ic = { ignoreCase: true };
+  const rows: [string, string, string, Record<string, unknown>, AppearsInVerdict][] = [
+    ['Codex case, ignoreCase', 'ΟΣ.A', 'ΟΣ', ic, 'present'],
+    ['Codex case, case-sensitive', 'ΟΣ.A', 'ΟΣ', {}, 'present'],
+    ['final sigma at the end of the page, ignoreCase', 'λόγος ΟΣ', 'ΟΣ', ic, 'present'],
+    ['final sigma at the end of the page, case-sensitive', 'λόγος ΟΣ', 'ΟΣ', {}, 'present'],
+    ['lowercase final sigma claim vs capital page, ignoreCase', 'ΛΌΓΟΣ', 'λόγος', ic, 'present'],
+    ['lowercase final sigma claim vs capital page, case-sensitive', 'ΛΌΓΟΣ', 'λόγος', {}, 'missing'],
+    ['mid-word sigma, ignoreCase', 'Ο ΚΌΣΜΟΣ', 'ο κόσμος', ic, 'present'],
+    ['mid-word sigma, case-sensitive', 'ο κόσμος', 'ο κόσμος', {}, 'present'],
+    ['medial sigma written as final, ignoreCase', 'κόςμος', 'κόσμος', ic, 'present'],
+    ['medial sigma written as final, case-sensitive', 'κόςμος', 'κόσμος', {}, 'missing'],
+    ['mixed Greek sentence, ignoreCase', 'Ο κόσμος είναι ΩΡΑΊΟΣ.', 'Ο ΚΌΣΜΟΣ ΕΊΝΑΙ ωραίος', ic, 'present'],
+    ['mixed Greek sentence, case-sensitive', 'Ο ΚΌΣΜΟΣ ΕΊΝΑΙ ΩΡΑΊΟΣ.', 'Ο ΚΌΣΜΟΣ ΕΊΝΑΙ ΩΡΑΊΟΣ', {}, 'present'],
+  ];
+  for (const [name, page, claimText, options, expected] of rows) {
+    it(name, () => {
+      expect(verdictOf(page, claimText, {}, options)).toBe(expected);
+    });
+  }
+});
