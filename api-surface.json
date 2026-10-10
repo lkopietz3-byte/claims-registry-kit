@@ -1,5 +1,6 @@
 {
   "claims-registry-kit": [
+    "DEFAULT_PLACEHOLDER_REFS",
     "checkEvidenceLinked",
     "checkStaleness",
     "createClaimsRegistry",
