@@ -5,8 +5,8 @@
 Claims Registry Kit is a small, dependency-free TypeScript library for
 tracking public-facing claims alongside an evidence reference and a
 last-verified date. It catches the structural problems that let product copy
-quietly drift: claims with no linked evidence and claims whose review is
-overdue.
+quietly drift: claims with no linked evidence (including a reference that is
+only a placeholder such as `TODO`) and claims whose review is overdue.
 
 ## Start here
 
@@ -223,19 +223,28 @@ a map, not the whole story.
 - **`ClaimStatus`** — `'current' | 'stale' | 'unverified'`, always computed,
   never stored.
 - **`EvaluatedClaim<EvidenceRef>`** — a `Claim` plus `status` and `ageDays`
-  (whole elapsed days, or `null` if `verifiedAt` didn't parse).
+  (elapsed time rounded down to whole days, for display only, or `null` if
+  `verifiedAt` didn't parse). The status never reads `ageDays`; see
+  [the threshold rule](#honest-limits).
+- **`EvidenceOptions`**: `{ placeholderRefs?: readonly string[] | false }`,
+  an optional last argument to `evaluateClaim`, `checkStaleness`,
+  `checkEvidenceLinked` and `generateClaimsReport` that changes or switches
+  off the placeholder list (below).
 
 ### Functions
 
-- **`evaluateClaim(claim, maxAgeDays, now?)`** → `EvaluatedClaim` — decide
-  one claim's status. Every other function funnels through this, so a claim
-  is always bucketed the same way. Defaults `now` to `new Date()`.
-- **`checkStaleness(claims, maxAgeDays, now?)`** → `EvaluatedClaim[]` — only
-  the claims that are `'stale'`, in input order.
-- **`checkEvidenceLinked(claims, now?)`** → `EvaluatedClaim[]` — only the
-  claims that are `'unverified'` (no usable `evidenceRef`), in input order.
-- **`generateClaimsReport(claims, maxAgeDays, now?)`** → `ClaimsReport` — all
-  three buckets plus counts and a `generatedAt` timestamp, in one call.
+- **`evaluateClaim(claim, maxAgeDays, now?, options?)`** → `EvaluatedClaim` —
+  decide one claim's status. Every other function funnels through this, so a
+  claim is always bucketed the same way. Defaults `now` to `new Date()`.
+- **`checkStaleness(claims, maxAgeDays, now?, options?)`** → `EvaluatedClaim[]`
+  — only the claims that are `'stale'`, in input order.
+- **`checkEvidenceLinked(claims, now?, options?)`** → `EvaluatedClaim[]` — only
+  the claims that are `'unverified'` (no usable `evidenceRef`), in input order.
+- **`generateClaimsReport(claims, maxAgeDays, now?, options?)`** →
+  `ClaimsReport` — all three buckets plus counts and a `generatedAt`
+  timestamp, in one call.
+- **`DEFAULT_PLACEHOLDER_REFS`**: the frozen default placeholder list:
+  `TODO`, `TBD`, `N/A`, `none`, `-` and `see above`. Spread it to extend it.
 - **`formatClaimsReportAsText(report)`** → `string` — a `ClaimsReport`
   rendered as plain text for a terminal or a CI job summary. Claim ids and
   text are caller strings, so control characters (including CR, LF and ESC),
@@ -246,7 +255,8 @@ a map, not the whole story.
   read ids and text from it, not from the printed string, for anything other
   than showing to a person. The escaping is not reversible.
 - **`createClaimsRegistry<EvidenceRef>()`** → `ClaimsRegistry` — an optional
-  in-memory store: `registerClaim` (throws on a duplicate `id`), `getClaims`,
+  in-memory store: `registerClaim` (throws on a duplicate `id`, or on one that
+  only looks the same), `getClaims`,
   `getClaim(id)`, `clear()`. Copies the top level of each claim in and out, so
   replacing a field on an object you registered or got back never changes what
   the registry holds. The copy is shallow: an `evidenceRef` that is an array
@@ -269,6 +279,18 @@ characters).
 
 ## Honest limits
 
+- **How old is too old.** A claim is `'stale'` when MORE than
+  `maxAgeDays` x 24 hours have elapsed since `verifiedAt`, compared in exact
+  milliseconds. The limit is inclusive: a claim exactly `maxAgeDays` old is
+  still `'current'`, and one millisecond older is `'stale'`. `maxAgeDays` can
+  be fractional (`0.5` is 12 hours) or `0` (only a claim verified this very
+  instant is current). `ageDays` is that elapsed time rounded down to whole
+  days, for display only: a claim 90 days and 23 hours old shows
+  `ageDays: 90` and is `'stale'` under `maxAgeDays: 90`, so a report can print
+  `90d old` under a `maxAgeDays: 90` heading. A bare `YYYY-MM-DD` counts from
+  UTC midnight, so it goes stale at the start of day `maxAgeDays` + 1 UTC, not
+  at the end of it. Earlier versions compared the rounded-down day count, which
+  let a claim stay `'current'` for up to 24 hours past the limit.
 - **This checks that a claim HAS a linked evidence reference, and whether
   that check is stale. It does NOT verify the evidence still actually
   proves the claim.** `checkEvidenceLinked` is a structural presence check —
@@ -279,8 +301,8 @@ characters).
   bidi controls such as U+061C and U+2066–2069, variation selectors, Hangul
   fillers and similar). Visible text in any script, emoji, and visible text
   wrapped in bidi controls all count as present. A reference that draws
-  something but means nothing (a Braille blank, `TODO`) also counts as
-  present. A claim can point at a file that was gutted in last week's
+  something but means nothing (a Braille blank) also counts as present. A
+  claim can point at a file that was gutted in last week's
   refactor and still read as `'current'` here, as long as someone bumped
   `verifiedAt`. Verifying that the evidence *still supports the claim's
   text* is a separate, much harder, domain-specific problem — it requires
@@ -322,11 +344,34 @@ characters).
   `freshness-kit`'s: it accepts a space instead of `T`, lowercase `t` and `z`,
   a timestamp without seconds, an offset such as `+01` or `+0100`, and up to
   nine fractional digits.
+- **Placeholder references are no evidence, by default.** An `evidenceRef`
+  that is exactly `TODO`, `TBD`, `N/A`, `none`, `-` or `see above` means the
+  field is saying there is no evidence, so the claim is `'unverified'` even
+  with a fresh `verifiedAt`. The match is on the whole string, ignoring case,
+  surrounding and repeated whitespace and invisible characters (and full-width
+  letters): `https://example.com/todo-list`, `none-such-ref-123` and
+  `- docs/a.md` are real references and stay linked. Inside a list, a
+  placeholder entry is skipped like a blank one. Only this short list is
+  matched; other stand-ins (`TBA`, `pending`, `?`, `...`, an em dash) still
+  count as present. Pass `{ placeholderRefs: [...DEFAULT_PLACEHOLDER_REFS,
+  'wip'] }` as the last argument to add your own, a different list to replace
+  the defaults, or `{ placeholderRefs: false }` to switch matching off (only
+  blank references are then missing). An object-shaped `evidenceRef` is never
+  inspected, so `{ ref: 'TODO' }` counts as present. This is a behavior change
+  from 0.3.1, where `TODO` counted as present.
 - **Duplicate ids are only caught by the registry.** `createClaimsRegistry`
-  rejects a second claim with the same `id`. `generateClaimsReport` and the
-  checks take a plain array and do not: two claims with the same `id` can
-  land in different buckets of one report. Keep ids unique, or go through the
-  registry.
+  rejects a second claim with the same `id`, and also one that only looks the
+  same: after dropping invisible characters (zero-width spaces and joiners,
+  bidi marks, the soft hyphen, variation selectors), normalizing to Unicode
+  NFC and trimming surrounding whitespace, the two are equal. It throws an
+  `Error` naming both spellings, with the invisible parts spelled out as
+  `\uXXXX`, and never merges them. Ids that differ in case, in inner spacing
+  (`a b` and `a  b`), or by a look-alike letter from another script (Cyrillic
+  `а` for Latin `a`) are different ids and are not caught; `getClaim(id)` is
+  an exact lookup. `generateClaimsReport` and the checks take a plain array
+  and check none of this: two claims with the same `id`, or look-alike ids,
+  can land in different buckets of one report. Keep ids unique, or go through
+  the registry.
 - **The registry's copy is shallow.** `registerClaim`, `getClaims` and
   `getClaim` copy the claim object, not what its fields point at. If
   `evidenceRef` is an array or an object, the registry and the caller share
@@ -356,7 +401,8 @@ characters).
   | 'file'; ref: string }`) if a plain string isn't enough for your system.
   It never opens, fetches or interprets the value. Only these are read as
   no evidence: `null`, `undefined`, `false`, `0`, `-0`, `NaN`, `0n`, an empty
-  or visibly blank string, and a list with no present entry. The same rule applies to each entry inside a
+  or visibly blank string, a placeholder string (see above), and a list with
+  no present entry. The same rule applies to each entry inside a
   list, so `[false]`, `[0]` and `['']` are missing. Every other value (an
   object, `true`, a non-zero number, a function, a symbol) counts as present
   without inspection, so an object whose `ref` field is empty still counts as
@@ -384,6 +430,7 @@ src/
   registry.ts     createClaimsRegistry() — minimal in-memory registration
   checks.ts       evaluateClaim, checkStaleness, checkEvidenceLinked,
                   generateClaimsReport, formatClaimsReportAsText
+  placeholders.ts DEFAULT_PLACEHOLDER_REFS and the internal placeholder matcher
   dates.ts        internal: strict ISO 8601 parsing (not exported)
   text.ts         internal: blank-string check and display escaping (not exported)
   validate.ts     internal: argument checks and one-time input copies (not exported)
@@ -394,6 +441,9 @@ test/
   dates.test.ts      verifiedAt parsing, formats, and time zone/DST behavior
   future.test.ts     a verifiedAt ahead of now
   evidence.test.ts   what counts as a present vs. missing evidenceRef
+  placeholders.test.ts  the placeholderRefs option and its validation
+  verdict-table.test.ts one named case per verdict finding: the age threshold,
+                        placeholder refs, look-alike ids, and the probes
   formatter.test.ts  formatClaimsReportAsText output and its escaping
   inputs.test.ts     read-once snapshots, plain-object claims, blank ids
   registry.test.ts   createClaimsRegistry copy-in/copy-out isolation

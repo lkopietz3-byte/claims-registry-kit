@@ -5,6 +5,57 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A claim could stay `'current'` up to 24 hours past `maxAgeDays`.** The age
+  limit was compared against whole days rounded down, so a claim 90 days and 23
+  hours old passed a 90-day policy, and a fractional `maxAgeDays` gave the wrong
+  verdict (`1.5` at 1.9 days, `0.5` at 20 hours and `0` at 23 hours 59 minutes
+  were all `'current'`). The limit is now compared in exact milliseconds.
+- **Look-alike duplicate ids were accepted by `createClaimsRegistry`.** An id
+  that differs from a registered one only by a trailing or leading space, a
+  zero-width or other invisible character, or NFC versus NFD normalization is
+  now rejected with an error that names both spellings.
+- **A placeholder `evidenceRef` counted as linked evidence.** `TODO`, `TBD`,
+  `N/A`, `none`, `-` and `see above` gave `'current'` with a fresh date. They
+  are now `'unverified'`.
+
+### Changed
+
+- **Behavior change: the age rule.** A claim is `'stale'` when MORE than
+  `maxAgeDays` x 24 hours have elapsed; exactly at the limit is still
+  `'current'` (inclusive), as before. Claims between the old and new cutoff
+  (up to 24 hours past it) move from `'current'` to `'stale'`. A bare
+  `YYYY-MM-DD` counts from UTC midnight. `ageDays` is unchanged: whole elapsed
+  days, rounded down, for display only.
+- **Behavior change: placeholder references.** A claim whose `evidenceRef` is
+  exactly a placeholder (ignoring case, surrounding and repeated whitespace,
+  invisible characters and full-width letters) moves from `'current'` or
+  `'stale'` to `'unverified'`. References that merely contain those words
+  (`https://example.com/todo-list`, `none-such-ref-123`) are unaffected.
+  Switch it off with `{ placeholderRefs: false }` or supply your own list.
+- **Behavior change: the registry.** `registerClaim` now throws for a look-alike
+  id where it used to register a second claim. `getClaim` stays an exact lookup.
+- New optional last argument `options?: EvidenceOptions` on `evaluateClaim`,
+  `checkStaleness`, `checkEvidenceLinked` and `generateClaimsReport`, and a new
+  export `DEFAULT_PLACEHOLDER_REFS` (the type `EvidenceOptions` is also
+  exported). Existing calls are unchanged.
+- Two tests in `test/evidence.test.ts` asserted that `'TODO'` and `'n/a'` count
+  as present; they now assert the new behavior.
+
+### Documented
+
+- The age limit is inclusive and `ageDays` is display-only, so a report can show
+  `90d old` for a claim that is stale under `maxAgeDays: 90`.
+- `generateClaimsReport` and the checks still do not look for duplicate ids,
+  exact or look-alike; only the registry does.
+- The look-alike rule does not cover case, inner spacing, or homoglyph letters
+  from another script. Only the six default placeholders are matched; `TBA`,
+  `pending`, `?`, `...` and dashes such as an em dash still count as present
+  unless you add them.
+
 ## [0.3.1] - 2026-10-07
 
 No change to the library's behavior or API.

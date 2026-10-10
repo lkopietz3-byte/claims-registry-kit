@@ -20,6 +20,18 @@
 - **Blank evidence means shows-nothing.** Only whitespace, control characters
   and `Default_Ignorable_Code_Point` characters are blank. Visible text in any
   script, emoji and bidi-wrapped visible text are present.
+- **Blank evidence includes placeholders.** A string that is exactly a
+  placeholder (`TODO`, `TBD`, `N/A`, `none`, `-`, `see above` by default;
+  case-insensitive, trimmed) is missing evidence. The list is configurable and
+  can be switched off per call. Matching is on the whole string only, so real
+  references that contain those words stay linked.
+- **Staleness compares elapsed milliseconds, not floored days.** Stale means
+  strictly more than `maxAgeDays` x 24h; exactly at the limit is current.
+  `ageDays` is a rounded-down display value and never feeds the status.
+- **The registry rejects look-alike ids.** After dropping invisible characters,
+  NFC normalization and trimming, equal ids are a duplicate; the error names
+  both spellings. Case, inner spacing and other-script look-alikes are not
+  covered.
 - **Text output is escaped, structured output is raw.**
   `formatClaimsReportAsText` prints control, line-break and bidi formatting
   characters as visible `\uXXXX` escapes; the report object is never
