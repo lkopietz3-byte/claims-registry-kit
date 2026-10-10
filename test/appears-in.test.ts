@@ -458,3 +458,81 @@ describe('review round: nested claims scale linearly', () => {
     expect(value.results.every((x) => x.verdict === 'present')).toBe(true);
   });
 });
+
+describe('round 3: page edges and boundary kinds', () => {
+  // Claim edge kinds: digit-edged, letter-edged, punctuation-edged.
+  const claimsByKind: Record<string, string> = { digit: '20', letter: 'ab', punct: '%' };
+  // What can sit just before or after the claim ('' means the page edge).
+  const neighbors: { name: string; text: string; wordBlocks: boolean }[] = [
+    { name: 'nothing', text: '', wordBlocks: false },
+    { name: 'whitespace', text: ' ', wordBlocks: false },
+    { name: 'punctuation', text: '!', wordBlocks: false },
+    { name: 'letter', text: 'x', wordBlocks: true },
+    { name: 'digit', text: '7', wordBlocks: true },
+  ];
+  for (const [kind, text] of Object.entries(claimsByKind)) {
+    for (const before of neighbors) {
+      for (const after of neighbors) {
+        const blocks = kind !== 'punct' && (before.wordBlocks || after.wordBlocks);
+        it(`${kind} claim, before ${before.name}, after ${after.name}`, () => {
+          const page = `${before.text}${text}${after.text}`;
+          expect(verdictOf(page, text)).toBe(blocks ? 'missing' : 'present');
+        });
+      }
+    }
+  }
+
+  it('a digit claim next to a separator at the page edges does not crash', () => {
+    expect(verdictOf('20.', '20')).toBe('present');
+    expect(verdictOf('.20', '20')).toBe('present');
+    expect(verdictOf(',20,', '20')).toBe('present');
+    expect(verdictOf('20.5', '20')).toBe('missing');
+    expect(verdictOf('1.20', '20')).toBe('missing');
+    expect(verdictOf('20,', '20')).toBe('present');
+    expect(verdictOf('20.\u{1f600}', '20')).toBe('present');
+  });
+});
+
+describe('round 3: options are read once without depending on enumerability', () => {
+  const registry = registryWith(claim({ id: 'a', text: 'Alpha', evidenceRef: 'pending' }));
+
+  it('a non-enumerable now is honored', () => {
+    const options = { maxAgeDays: 30 } as Record<string, unknown>;
+    Object.defineProperty(options, 'now', { value: NOW, enumerable: false });
+    expect(checkAppearsIn(registry, 'Alpha', ['a'], options as never).results[0].verdict).toBe('present');
+  });
+
+  it('a non-enumerable placeholderRefs is honored', () => {
+    const options = { maxAgeDays: 100000, now: NOW } as Record<string, unknown>;
+    Object.defineProperty(options, 'placeholderRefs', { value: ['pending'], enumerable: false });
+    expect(checkAppearsIn(registry, 'Alpha', ['a'], options as never).results[0].verdict).toBe('stale');
+  });
+
+  it('getters are read exactly once', () => {
+    const reads: Record<string, number> = {};
+    const options: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries({ maxAgeDays: 100000, now: NOW, ignoreCase: false, placeholderRefs: ['pending'] })) {
+      Object.defineProperty(options, key, { enumerable: true, get() { reads[key] = (reads[key] ?? 0) + 1; return value; } });
+    }
+    checkAppearsIn(registry, 'Alpha', ['a'], options as never);
+    expect(reads).toEqual({ maxAgeDays: 1, now: 1, ignoreCase: 1, placeholderRefs: 1 });
+  });
+});
+
+describe('round 3: numeric nesting scales linearly', () => {
+  for (const sep of [',', '.', ' ', ', ']) {
+    it(`600 nested claims "1${sep}1${sep}1..." against a long page (separator ${JSON.stringify(sep)})`, () => {
+      const registry = createClaimsRegistry();
+      const ids: string[] = [];
+      for (let i = 1; i <= 600; i += 1) {
+        registry.registerClaim(claim({ id: `n${String(i)}`, text: Array.from({ length: i }, () => '1').join(sep) }));
+        ids.push(`n${String(i)}`);
+      }
+      const page = '1'.concat((sep + '1').repeat(50_000));
+      const small = cpuMs(() => checkAppearsIn(registry, page.slice(0, 25_000), ids, OPTS));
+      const large = cpuMs(() => checkAppearsIn(registry, page, ids, OPTS));
+      expect(small.value.results).toHaveLength(600);
+      expect(large.ms).toBeLessThan(1000);
+    });
+  }
+});

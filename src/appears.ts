@@ -48,12 +48,14 @@ export type ClaimLookup<EvidenceRef = string> = Pick<ClaimsRegistry<EvidenceRef>
 const WORD_CHAR = /^[\p{L}\p{N}\p{M}_]$/u;
 const DIGIT = /^\p{N}$/u;
 
+// -1 is the "nothing there" sentinel (the edge of the text): never a word
+// character, never a digit, never a separator.
 function isWord(codePoint: number): boolean {
-  return WORD_CHAR.test(String.fromCodePoint(codePoint));
+  return codePoint >= 0 && WORD_CHAR.test(String.fromCodePoint(codePoint));
 }
 
 function isDigit(codePoint: number): boolean {
-  return DIGIT.test(String.fromCodePoint(codePoint));
+  return codePoint >= 0 && DIGIT.test(String.fromCodePoint(codePoint));
 }
 
 function isHigh(unit: number): boolean {
@@ -202,23 +204,33 @@ function findAll(text: string, needles: readonly string[]): boolean[] {
     }
   }
 
-  // Two chains of "the next shorter claim text that ends here":
-  // `linkAll` over every claim, `linkSafe` over claims whose last character is
-  // not a word character (those need no check on what follows). Each chain
-  // skips claims already found, with path compression, so a claim that has
-  // been seen costs nothing after that.
-  const linkAll: number[] = new Array<number>(nodeCount).fill(-1);
-  const linkSafe: number[] = new Array<number>(nodeCount).fill(-1);
-  const isSafe = (node: number): boolean => {
+  // Three chains of "the next shorter claim text that ends here", chosen per
+  // text position by what follows:
+  //   all   - nothing special follows;
+  //   safe  - a word character follows: only claims ending in a non-word
+  //           character can still match;
+  //   plain - a number separator followed by a digit follows: only claims that
+  //           do not end in a digit can still match.
+  // Each chain skips claims already found, with path compression, so a claim
+  // that has been seen costs nothing after that.
+  const accepts: ((e: NeedleEdges) => boolean)[] = [
+    () => true,
+    (e) => !e.lastWord,
+    (e) => !e.lastDigit,
+  ];
+  const links: number[][] = accepts.map(() => new Array<number>(nodeCount).fill(-1));
+  const isIn = (kind: number, node: number): boolean => {
     const n = terminal[node];
-    return n >= 0 && !(edgeInfo[n]).lastWord;
+    return n >= 0 && (accepts[kind])(edgeInfo[n]);
   };
   for (const level of byDepth) {
     if (level === undefined) continue;
     for (const v of level) {
       const f = fail[v];
-      linkAll[v] = (terminal[f]) >= 0 ? f : (linkAll[f]);
-      linkSafe[v] = isSafe(f) ? f : (linkSafe[f]);
+      for (let kind = 0; kind < accepts.length; kind += 1) {
+        const link = links[kind];
+        link[v] = isIn(kind, f) ? f : (link[f]);
+      }
     }
   }
   const live = (link: number[], head: number): number => {
@@ -244,9 +256,12 @@ function findAll(text: string, needles: readonly string[]): boolean[] {
     // What follows decides, once for this position, which chain can still
     // match: inside a run of word characters only claims that end in a
     // non-word character can.
-    const afterWord = end < text.length && isWord(text.codePointAt(end) as number);
-    const link = afterWord ? linkSafe : linkAll;
-    const own = afterWord ? isSafe(state) : (terminal[state]) >= 0;
+    const after = codePointAfter(text, end);
+    let kind = 0;
+    if (isWord(after)) kind = 1;
+    else if (isNumberSeparator(after) && isDigit(codePointAfter(text, end + 1))) kind = 2;
+    const link = links[kind];
+    const own = isIn(kind, state);
     let v = own ? state : (link[state]);
     v = live(link, v);
     while (v >= 0) {
@@ -345,7 +360,14 @@ export function checkAppearsIn<EvidenceRef = string>(
   if (typeof options !== 'object' || options === null) {
     throw new TypeError(`${PREFIX}options must be an object with maxAgeDays`);
   }
-  const opts: AppearsInOptions = { ...options };
+  // Each supported option is read exactly once, by name, so a getter answers
+  // once and a non-enumerable property still counts.
+  const opts: AppearsInOptions = {
+    maxAgeDays: options.maxAgeDays,
+    now: options.now,
+    ignoreCase: options.ignoreCase,
+    placeholderRefs: options.placeholderRefs,
+  };
   assertMaxAgeDays(opts.maxAgeDays);
   const nowMs = readNow(opts.now === undefined ? new Date() : opts.now);
   if (opts.ignoreCase !== undefined && typeof opts.ignoreCase !== 'boolean') {

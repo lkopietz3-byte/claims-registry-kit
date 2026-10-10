@@ -240,10 +240,12 @@ unless you pass `ignoreCase: true`. A match has to stand on word boundaries:
 `free` is found inside `free-trial`. All claims are searched in one pass, and a claim stops costing anything once
 it is found. Cost is linear in the page text plus the claim texts for ordinary
 and for nested wordings (`a`, `a a`, `a a a`, ... or `a`, `aa`, `aaa`, ...). One
-shape is not strictly linear: claims whose texts are suffixes of each other, all
-ending in punctuation, against a page where they keep failing the start
-boundary. The extra work per page character is then at most the number of such
-nested claims, which you control through what you register.
+shape is not strictly linear: several claims whose texts are suffixes of each
+other (`1`, `b1`, `bb1`, ...), against a page where each keeps failing the
+boundary at its start (`xbbbb1 xbbbb1 ...`). The extra work per page character
+is then at most the number of such nested claims, which you control through
+what you register. Nested wordings that fail at their end (a longer word or
+number follows) are filtered out before they are visited.
 
 Not covered: placeholders such as `{rate}`. The registry stores no value beside
 a claim's text, so there is nothing to substitute; register the final wording,
