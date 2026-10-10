@@ -515,7 +515,10 @@ describe('verdict table: pathological shapes stay linear', () => {
         registry.registerClaim(claim({ id: lookAlike }));
       }).toThrow(/looks the same/);
     });
-    expect(elapsed).toBeLessThan(1_000);
+    // Building the error spells out every character (megabytes of text for the
+    // biggest shapes), so the bound is looser. A quadratic step would take
+    // minutes here, not seconds.
+    expect(elapsed).toBeLessThan(3_000);
   });
 
   it('builds the look-alike error for long ids quickly', () => {

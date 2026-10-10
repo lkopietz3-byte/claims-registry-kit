@@ -105,23 +105,19 @@ export function lookAlikeKey(id: string): string {
 // Everything that can make two different strings look alike, spelled out so an
 // error message can show the difference: control characters, whitespace other
 // than a plain inner space, invisible characters and combining marks.
-const NEEDS_SPELLING = /[\p{Cc}\p{White_Space}\p{Default_Ignorable_Code_Point}\p{M}]/u;
+const NEEDS_SPELLING = /[\p{Cc}\p{White_Space}\p{Default_Ignorable_Code_Point}\p{M}]/gu;
 
 /**
  * Show an id so that spellings differing only in invisible or look-alike
  * characters can be told apart: such characters become `\uXXXX` (or
  * `\u{XXXXX}` above U+FFFF). A plain space between visible characters is kept;
- * a leading or trailing one is spelled out as `\u0020`.
+ * a leading or trailing one is spelled out as `\u0020`. One pass over the
+ * string, linear in its length.
  */
 export function spellOut(id: string): string {
-  const chars = Array.from(id);
-  const last = chars.length - 1;
-  return chars
-    .map((ch, i) => {
-      if (ch === ' ' && i !== 0 && i !== last) return ch;
-      if (!NEEDS_SPELLING.test(ch)) return ch;
-      const code = (ch.codePointAt(0) as number).toString(16).padStart(4, '0');
-      return code.length > 4 ? `\\u{${code}}` : `\\u${code}`;
-    })
-    .join('');
+  return id.replace(NEEDS_SPELLING, (ch, offset: number) => {
+    if (ch === ' ' && offset !== 0 && offset + 1 !== id.length) return ch;
+    const code = (ch.codePointAt(0) as number).toString(16).padStart(4, '0');
+    return code.length > 4 ? `\\u{${code}}` : `\\u${code}`;
+  });
 }
