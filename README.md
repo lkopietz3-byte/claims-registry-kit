@@ -6,7 +6,13 @@ Claims Registry Kit is a small, dependency-free TypeScript library for
 tracking public-facing claims alongside an evidence reference and a
 last-verified date. It catches the structural problems that let product copy
 quietly drift: claims with no linked evidence (including a reference that is
-only a placeholder such as `TODO`) and claims whose review is overdue.
+only a placeholder such as `TODO`) and claims whose review is overdue. It can
+also check that a page still shows the exact wording you registered.
+
+It is for solo founders and small teams who publish a short list of sentences
+that must not drift (a pricing line, a disclosure, a security or compliance
+status) and want a cheap check in CI. It does not decide whether a claim is
+true, it does not read paraphrases, and it does not fetch or render pages.
 
 ## Start here
 
@@ -30,7 +36,7 @@ through every status and edge case.
 
 Use it when you already publish claims about your product (a landing page, a
 pricing table, a pitch deck, a status page) and want a cheap, automatable way
-to notice when one has gone unlinked or stale — a CI check, a pre-launch
+to notice when one has gone unlinked or stale, a CI check, a pre-launch
 script, a periodic manual pass.
 
 Don't reach for this if you need any of the following; it doesn't do them:
@@ -48,16 +54,16 @@ Don't reach for this if you need any of the following; it doesn't do them:
 
 Marketing copy ("we support real-time sync", "your data is encrypted at
 rest", "SOC 2 audited") almost always lives somewhere disconnected from the
-code that makes it true — a landing page, a pricing table, an FAQ, a pitch
+code that makes it true, a landing page, a pricing table, an FAQ, a pitch
 deck. The code underneath a claim can change or get deleted in a refactor
 six months later, and nothing forces anyone to notice that the sentence is
 now false. The claim doesn't break loudly; it just sits there, still
 published, quietly wrong.
 
 The fix this library encodes: store each claim as a small structured
-record, not a loose sentence — `{ text, evidenceRef, verifiedAt }` — where
+record, not a loose sentence, `{ text, evidenceRef, verifiedAt }`, where
 `evidenceRef` points at whatever actually proves the claim (a file, a URL, a
-test name, a doc id — you decide) and `verifiedAt` is the date someone last
+test name, a doc id, you decide) and `verifiedAt` is the date someone last
 confirmed that reference still holds. Once claims live in that shape, two
 cheap checks become possible that weren't possible before: "does this claim
 even have a linked reference" and "how long has it been since anyone
@@ -150,8 +156,8 @@ checkStaleness(claims, 90, NOW);   // => [ soc2-claim, evaluated with status: 's
 checkEvidenceLinked(claims, NOW);  // => [ uptime-claim, evaluated with status: 'unverified' ]
 ```
 
-Both `checkStaleness` and `checkEvidenceLinked` — and `generateClaimsReport`
-— funnel through the same `evaluateClaim(claim, maxAgeDays, now)` function,
+Both `checkStaleness` and `checkEvidenceLinked`, and `generateClaimsReport`,
+funnel through the same `evaluateClaim(claim, maxAgeDays, now)` function,
 so a claim is always bucketed the same way no matter which entry point you
 call: **missing evidence always wins as `'unverified'`**, even if
 `verifiedAt` is today. A fresh date next to an empty reference isn't
@@ -161,7 +167,7 @@ evidence of anything.
 
 If it's convenient for several config modules to each register a claim at
 load time, `createClaimsRegistry` gives you one array to run checks
-against. It's optional — most callers will just keep an array of `Claim`
+against. It's optional: most callers will just keep an array of `Claim`
 objects wherever they already keep config and skip this entirely. The
 registry copies each claim object on the way in and out, but the copy is
 shallow: if `evidenceRef` is an array or an object, the registry and you still
@@ -192,12 +198,12 @@ if (report.counts.stale > 0 || report.counts.unverified > 0) {
 }
 ```
 
-This is meant to run as a **manual or periodic pass** — a Monday-morning
-review someone runs before a launch, or a CI job that gates a PR — not as a
+This is meant to run as a **manual or periodic pass**, a Monday-morning
+review someone runs before a launch, or a CI job that gates a PR, not as a
 live/always-on cron. Nothing in this library schedules itself or watches
 anything in the background; it computes an answer for the claims and `now`
 you hand it, once, when you call it. If you want it on a schedule, wire the
-script above into whatever scheduler you already use — that's outside this
+script above into whatever scheduler you already use; that's outside this
 library's job.
 
 ### Checking that a page shows the registered wording
@@ -226,7 +232,11 @@ Each distinct id gets one verdict, in first-seen order:
 | `missing` | The text is not on the page (or only inside a longer word or number), or the claim's text is not a string or is blank. |
 | `unknown-id` | No claim is registered under exactly that id. A look-alike spelling (trailing space, zero-width character, other case) is unknown, not matched. |
 
-`ok` is true only when every verdict is `present`. An empty id list throws a
+`ok` is true only when every verdict is `present`. `assertAppearsIn` names only
+the verdict of each failing claim, for example `"pricing" (stale)`. A claim
+whose wording is on the page but whose evidence reference is a placeholder is
+`stale` with `claimStatus: 'unverified'`, so use `checkAppearsIn` when you need
+the cause. An empty id list throws a
 `RangeError`, because it would pass having checked nothing. `maxAgeDays` is
 required, and `now` and `placeholderRefs` work as in `evaluateClaim`.
 
@@ -247,39 +257,222 @@ is then at most the number of such nested claims, which you control through
 what you register. Nested wordings that fail at their end (a longer word or
 number follows) are filtered out before they are visited.
 
-Not covered: placeholders such as `{rate}`. The registry stores no value beside
-a claim's text, so there is nothing to substitute; register the final wording,
-or one claim per rendered variant. Also not covered: HTML (strip tags first,
-or `<b>` between words will make a claim `missing`), meaning (a page that says
-"we do not offer free trials" still shows the words `free trials`), and where
-on the page the text appears.
+Matching is on exact approved wording. A page that says the same thing in other
+words is `missing`: `1M events` does not match `1 million events`, `$25` does not
+match `$25.00`, and `99.9% uptime` does not match `99.99% uptime` (which is the
+point). Register the wording as it is published, or one claim per variant you
+allow. `ignoreCase` lower-cases both sides; it is not full Unicode case folding,
+so `STRASSE` does not match `Straße`. A zero-width space between two words joins
+them (`free<ZWSP>trial` reads as `freetrial`).
+
+Also not covered:
+
+- **Placeholders** such as `{rate}`. The registry stores no value beside a
+  claim's text, so there is nothing to substitute; register the final wording,
+  or one claim per rendered variant.
+- **Meaning.** A page that says "we do not offer free trials" still shows the
+  words `free trials`, and a footnote that quotes a label counts as showing it.
+- **Where or whether the text is seen.** `present` means the wording is in the
+  string you passed, not that a visitor sees it. Text in a hidden element is
+  present if you leave it in the string.
+- **HTML, Markdown and JSX.** Pass visible text, not source. See the next
+  section.
+
+### Getting page text from HTML
+
+Most surprises on a first run are not drift. They come from extraction: raw HTML
+has tags between words, entities (`provider&#x27;s`), hidden elements and
+scripts, and a quick tag-strip leaves glued words or misses entities. Extract the
+visible text first, then check it. The kit applies the same normalization to the
+claim and to the page, so only the extraction is yours.
+
+This function is small, runs in one pass over the page (time grows linearly with
+its size), and is tested in this repo (`test/html-recipe.test.ts` runs the exact
+code below, and fails if this block and the tested file differ). It turns every
+tag into a space, decodes numeric and common named entities, and drops comments,
+`<head>`, scripts, styles, `<noscript>`, `<template>`, and any element with
+`hidden`, `aria-hidden="true"`, or an inline `display:none` or
+`visibility:hidden`.
+
+<!-- recipe: test/recipes/html-to-text.ts -->
+```ts
+// Visible text from an HTML string, for checkAppearsIn. One pass, no regex
+// over the whole document, so the time is linear in the size of the page.
+const VOID = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr',
+]);
+const RAW = new Set(['script', 'style']); // text up to the closing tag, never shown
+const INERT = new Set(['template', 'noscript', 'head']); // contents are not shown
+
+const NAMED: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  ndash: '–', mdash: '—', lsquo: '‘', rsquo: '’',
+  ldquo: '“', rdquo: '”', hellip: '…',
+  copy: '©', reg: '®', trade: '™',
+};
+
+function decodeEntities(text: string): string {
+  return text.replace(/&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([A-Za-z][A-Za-z0-9]{1,31}));/g, (all, dec, hex, name) => {
+    if (dec !== undefined || hex !== undefined) {
+      const code = dec !== undefined ? Number(dec) : parseInt(hex as string, 16);
+      const bad = code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff);
+      return bad ? '�' : String.fromCodePoint(code);
+    }
+    return NAMED[name as string] ?? all; // an unknown name stays as written
+  });
+}
+
+const isSpace = (c: string) => c === ' ' || c === '\n' || c === '\t' || c === '\r' || c === '\f';
+const isLetter = (c: string) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+
+export function htmlToText(html: string): string {
+  const out: string[] = [];
+  const open: string[] = []; // names of the elements that are open
+  const openCount = new Map<string, number>();
+  let hiddenAt = -1; // stack depth of the hidden element we are inside, or -1
+  let i = 0;
+  while (i < html.length) {
+    const lt = html.indexOf('<', i);
+    const textEnd = lt === -1 ? html.length : lt;
+    if (textEnd > i && hiddenAt < 0) out.push(decodeEntities(html.slice(i, textEnd)));
+    if (lt === -1) break;
+    i = lt;
+    if (html.startsWith('<!--', i)) {
+      const end = html.indexOf('-->', i + 4);
+      i = end === -1 ? html.length : end + 3;
+      continue;
+    }
+    const closing = html[i + 1] === '/';
+    const first = html[i + (closing ? 2 : 1)] ?? '';
+    if (!isLetter(first)) {
+      if (first === '!' || first === '?') { // doctype, CDATA, processing instruction
+        const end = html.indexOf('>', i);
+        i = end === -1 ? html.length : end + 1;
+      } else { // a bare "<" such as "a < b" is just text
+        if (hiddenAt < 0) out.push('<');
+        i += 1;
+      }
+      continue;
+    }
+    // A tag: read its name, then its attributes (only three matter here).
+    let j = i + (closing ? 2 : 1);
+    const nameStart = j;
+    while (j < html.length && !isSpace(html[j]) && html[j] !== '/' && html[j] !== '>') j += 1;
+    const name = html.slice(nameStart, j).toLowerCase();
+    let hidden = INERT.has(name);
+    let selfClosing = false;
+    while (j < html.length && html[j] !== '>') {
+      if (isSpace(html[j]) || html[j] === '/') {
+        selfClosing = html[j] === '/';
+        j += 1;
+        continue;
+      }
+      selfClosing = false;
+      const attrStart = j;
+      while (j < html.length && !isSpace(html[j]) && html[j] !== '=' && html[j] !== '>' && html[j] !== '/') j += 1;
+      const attr = html.slice(attrStart, j).toLowerCase();
+      let value = '';
+      while (j < html.length && isSpace(html[j])) j += 1;
+      if (html[j] === '=') {
+        j += 1;
+        while (j < html.length && isSpace(html[j])) j += 1;
+        const quote = html[j];
+        if (quote === '"' || quote === "'") {
+          const end = html.indexOf(quote, j + 1);
+          if (end === -1) { j = html.length; break; } // never closed: the rest is not a page
+          value = html.slice(j + 1, end);
+          j = end + 1;
+        } else {
+          const valueStart = j;
+          while (j < html.length && !isSpace(html[j]) && html[j] !== '>') j += 1;
+          value = html.slice(valueStart, j);
+        }
+      }
+      if (attr === 'hidden') hidden = true;
+      else if (attr === 'aria-hidden' && value.trim().toLowerCase() === 'true') hidden = true;
+      else if (attr === 'style' && /display\s*:\s*none|visibility\s*:\s*hidden/i.test(value)) hidden = true;
+    }
+    i = j + 1; // past the ">" (or past the end of an unterminated tag)
+    if (hiddenAt < 0) out.push(' '); // every tag is a break between words
+    if (closing) {
+      if ((openCount.get(name) ?? 0) > 0) {
+        let top: string | undefined;
+        while (top !== name) {
+          top = open.pop();
+          openCount.set(top as string, (openCount.get(top as string) ?? 1) - 1);
+        }
+        if (open.length <= hiddenAt) hiddenAt = -1;
+      }
+    } else if (RAW.has(name) && !selfClosing) {
+      // Skip to the matching close tag. Each "</" is looked at once.
+      let k = i;
+      for (;;) {
+        k = html.indexOf('</', k);
+        if (k === -1 || html.slice(k + 2, k + 2 + name.length).toLowerCase() === name) break;
+        k += 2;
+      }
+      const end = k === -1 ? -1 : html.indexOf('>', k);
+      i = end === -1 ? html.length : end + 1;
+    } else if (!VOID.has(name) && !selfClosing) {
+      if (hidden && hiddenAt < 0) hiddenAt = open.length;
+      open.push(name);
+      openCount.set(name, (openCount.get(name) ?? 0) + 1);
+    }
+  }
+  return out.join('');
+}
+```
+
+```ts
+import { assertAppearsIn } from 'claims-registry-kit';
+import { htmlToText } from './html-to-text.js';
+
+const html = await (await fetch('https://example.com/pricing')).text();
+assertAppearsIn(registry, htmlToText(html), ['uptime', 'refund-window'], { maxAgeDays: 90 });
+```
+
+What the recipe does not do: it does not apply CSS (a `class="hidden"` rule, a
+media query or an off-screen position is invisible to it), it does not run
+JavaScript, and it does not model HTML's implied end tags, so an unclosed hidden
+`<p>` or `<li>` hides the rest of its parent. If the text your visitors see
+depends on CSS or scripts, take it from a rendered page instead (for example a
+browser's `innerText`) and pass that string. For Markdown, render it to HTML
+first, or register the wording as it appears after rendering. For tables, the
+recipe puts a space between cells, so `SOC 2` | `Compliant` reads as
+`SOC 2 Compliant`.
 
 ## API reference
 
 Every export, briefly. Full behavior and edge cases are in each function's
 TSDoc in [`src/checks.ts`](src/checks.ts), [`src/registry.ts`](src/registry.ts),
-and [`src/types.ts`](src/types.ts) — read those for the exact rules; this is
+and [`src/types.ts`](src/types.ts), read those for the exact rules; this is
 a map, not the whole story.
 
 ### Types
 
-- **`Claim<EvidenceRef = string>`** — `{ id, text, evidenceRef, verifiedAt, verifiedBy? }`.
+- **`Claim<EvidenceRef = string>`**: `{ id, text, evidenceRef, verifiedAt, verifiedBy? }`.
   The record you build; `EvidenceRef` defaults to `string` but can be any
   shape you supply (a value that is falsy or blank counts as no evidence, see
   Honest limits). A claim must be a plain object (or one with a `null`
   prototype): a `Map`, `Date`, array or class instance is rejected with a
   `TypeError` instead of being read as a claim with no fields.
-- **`IsoDateString`** — a `string` alias for `verifiedAt`: a bare
+- **`IsoDateString`**: a `string` alias for `verifiedAt`: a bare
   `'YYYY-MM-DD'` (read as UTC midnight), or a full ISO 8601 timestamp that
   MUST carry an explicit `Z` or `+HH:mm`/`-HH:mm` offset. A timestamp with a
   time-of-day but no zone (e.g. `'2026-01-01T12:00:00'`) is treated as
-  unparseable, not silently read as UTC — see "Honest limits".
-- **`ClaimStatus`** — `'current' | 'stale' | 'unverified'`, always computed,
+  unparseable, not silently read as UTC (see "Honest limits").
+- **`ClaimStatus`**: `'current' | 'stale' | 'unverified'`, always computed,
   never stored.
-- **`EvaluatedClaim<EvidenceRef>`** — a `Claim` plus `status` and `ageDays`
+- **`EvaluatedClaim<EvidenceRef>`**: a `Claim` plus `status` and `ageDays`
   (elapsed time rounded down to whole days, for display only, or `null` if
   `verifiedAt` didn't parse). The status never reads `ageDays`; see
   [the threshold rule](#honest-limits).
+- **`AppearsInOptions`**: `{ maxAgeDays, now?, ignoreCase?, placeholderRefs? }`,
+  the last argument of `checkAppearsIn` and `assertAppearsIn`. The result types
+  are `AppearsInReport` (`{ ok, results }`), `AppearsInResult`
+  (`{ id, verdict, claimStatus? }`) and `AppearsInVerdict`. `ClaimLookup` is the
+  `getClaim(id)` shape those two functions ask of a registry, and
+  `ClaimsRegistry` and `ClaimsReport` are the registry and report types.
 - **`EvidenceOptions`**: `{ placeholderRefs?: readonly string[] | false }`,
   an optional last argument to `evaluateClaim`, `checkStaleness`,
   `checkEvidenceLinked` and `generateClaimsReport` that changes or switches
@@ -287,19 +480,19 @@ a map, not the whole story.
 
 ### Functions
 
-- **`evaluateClaim(claim, maxAgeDays, now?, options?)`** → `EvaluatedClaim` —
+- **`evaluateClaim(claim, maxAgeDays, now?, options?)`** → `EvaluatedClaim`:
   decide one claim's status. Every other function funnels through this, so a
   claim is always bucketed the same way. Defaults `now` to `new Date()`.
-- **`checkStaleness(claims, maxAgeDays, now?, options?)`** → `EvaluatedClaim[]`
-  — only the claims that are `'stale'`, in input order.
-- **`checkEvidenceLinked(claims, now?, options?)`** → `EvaluatedClaim[]` — only
+- **`checkStaleness(claims, maxAgeDays, now?, options?)`** → `EvaluatedClaim[]`,
+  only the claims that are `'stale'`, in input order.
+- **`checkEvidenceLinked(claims, now?, options?)`** → `EvaluatedClaim[]`, only
   the claims that are `'unverified'` (no usable `evidenceRef`), in input order.
 - **`generateClaimsReport(claims, maxAgeDays, now?, options?)`** →
-  `ClaimsReport` — all three buckets plus counts and a `generatedAt`
+  `ClaimsReport`: all three buckets plus counts and a `generatedAt`
   timestamp, in one call.
 - **`DEFAULT_PLACEHOLDER_REFS`**: the frozen default placeholder list:
   `TODO`, `TBD`, `N/A`, `none`, `-` and `see above`. Spread it to extend it.
-- **`formatClaimsReportAsText(report)`** → `string` — a `ClaimsReport`
+- **`formatClaimsReportAsText(report)`** → `string`: a `ClaimsReport`
   rendered as plain text for a terminal or a CI job summary. Claim ids and
   text are caller strings, so control characters (including CR, LF and ESC),
   line and paragraph separators and bidi formatting characters are printed as
@@ -312,7 +505,7 @@ a map, not the whole story.
   **`assertAppearsIn(...)`** (same arguments, throws an `Error` listing each
   claim that is not `present`, returns the report otherwise): see "Checking that
   a page shows the registered wording". `registry` only needs `getClaim(id)`.
-- **`createClaimsRegistry<EvidenceRef>()`** → `ClaimsRegistry` — an optional
+- **`createClaimsRegistry<EvidenceRef>()`** → `ClaimsRegistry`: an optional
   in-memory store: `registerClaim` (throws on a duplicate `id`, or on one that
   only looks the same), `getClaims`,
   `getClaim(id)`, `clear()`. Copies the top level of each claim in and out, so
@@ -324,8 +517,8 @@ a map, not the whole story.
 `generateClaimsReport` throw `TypeError`/`RangeError` on a malformed
 argument (a non-array `claims`, a hole in it, a claim that is not a plain
 object, a negative or non-numeric `maxAgeDays`, an Invalid Date `now`) rather
-than silently returning a wrong answer — see their TSDoc for the exact
-conditions. Each claim, the `claims` array and `now` are read once, then
+than silently returning a wrong answer (see their TSDoc for the exact
+conditions). Each claim, the `claims` array and `now` are read once, then
 validated and used from that one copy, so a getter or Proxy that answers
 differently the second time cannot make the returned claim differ from the
 one that was judged. `now` must be a real `Date` (a `Date` subclass works; an
@@ -337,6 +530,10 @@ characters).
 
 ## Honest limits
 
+- **`'current'` is not "approved".** It means only that an evidence reference
+  is present and `verifiedAt` is inside your policy. A claim that nobody has
+  reviewed can be `'current'` if it has a reference and a recent date. Keep
+  review status in your own data and do not print `current` as a sign-off.
 - **How old is too old.** A claim is `'stale'` when MORE than
   `maxAgeDays` x 24 hours have elapsed since `verifiedAt`, compared in exact
   milliseconds. The limit is inclusive: a claim exactly `maxAgeDays` old is
@@ -351,9 +548,9 @@ characters).
   let a claim stay `'current'` for up to 24 hours past the limit.
 - **This checks that a claim HAS a linked evidence reference, and whether
   that check is stale. It does NOT verify the evidence still actually
-  proves the claim.** `checkEvidenceLinked` is a structural presence check —
+  proves the claim.** `checkEvidenceLinked` is a structural presence check:
   is `evidenceRef` non-blank (or, for a list, does at least one of its
-  entries qualify) — and it never opens the file, fetches the URL, or runs the
+  entries qualify), and it never opens the file, fetches the URL, or runs the
   test named in `evidenceRef`. Blank means only whitespace, control characters
   and `Default_Ignorable_Code_Point` characters (zero-width spaces and joiners,
   bidi controls such as U+061C and U+2066–2069, variation selectors, Hangul
@@ -363,7 +560,7 @@ characters).
   claim can point at a file that was gutted in last week's
   refactor and still read as `'current'` here, as long as someone bumped
   `verifiedAt`. Verifying that the evidence *still supports the claim's
-  text* is a separate, much harder, domain-specific problem — it requires
+  text* is a separate, much harder, domain-specific problem that requires
   understanding both the claim and the artifact well enough to judge
   whether one still proves the other. That's out of scope on purpose, and no kit
   in this family does it for you (see [Relationship to sibling
@@ -372,13 +569,13 @@ characters).
   person (or a bot) from bumping the date without actually re-checking the
   evidence. This library can tell you a claim hasn't been looked at in 200
   days; it can't tell you whether the last "verification" was real.
-- **Dates are strict ISO 8601, not "whatever `new Date()` accepts" — and an
+- **Dates are strict ISO 8601, not "whatever `new Date()` accepts", and an
   unparseable `verifiedAt` fails safe to `'stale'` with `ageDays: null`.**
-  `verifiedAt` must be either a bare `'YYYY-MM-DD'` (read as UTC midnight —
+  `verifiedAt` must be either a bare `'YYYY-MM-DD'` (read as UTC midnight:
   it has no time-of-day, so there's nothing to be ambiguous about) or a full
   timestamp that carries an explicit `Z` or `+HH:mm`/`-HH:mm` offset. **A
   timestamp with a time-of-day but no zone, like `'2026-01-01T12:00:00'`, is
-  NOT read as UTC** — it's treated exactly like any other unparseable value:
+  NOT read as UTC**, it's treated exactly like any other unparseable value:
   `status: 'stale'` and `ageDays: null`. `freshness-kit` has the same zone
   requirement but throws a `RangeError` there, where this library reports
   `'stale'`.
@@ -387,12 +584,12 @@ characters).
   failing to `'stale'` instead means the worst a bad or ambiguous date can do
   is get a claim reviewed again, never hide it as `'current'`. The same
   fail-safe rule applies to any other value outside the accepted formats (a
-  month name, `MM/DD/YYYY`, an impossible calendar day like `2026-02-30`) —
+  month name, `MM/DD/YYYY`, an impossible calendar day like `2026-02-30`):
   always `'stale'`/`null`, never guessed at, never `'current'`.
 - **A future `verifiedAt` gets a grace period sized to what its format can
   honestly explain, then reads as a typo.** A bare `'YYYY-MM-DD'` carries no
   time zone, so it may be up to 14 hours ahead of UTC before it's treated as
-  a typo rather than clock skew — it can already be "today" in a zone ahead
+  a typo rather than clock skew: it can already be "today" in a zone ahead
   of UTC (UTC+14, e.g. Pacific/Kiritimati, is the furthest-ahead civil zone).
   An explicit timestamp names an exact, zoned instant and gets none of that
   slack: even one millisecond past `now` reads `'stale'`, not `'current'`.
@@ -450,11 +647,11 @@ characters).
 - **No persistence, no scheduling, no notifications.** `createClaimsRegistry`
   is in-memory only and resets on restart. There's no built-in file
   format, database schema, cron, Slack webhook, or dashboard. Bring your
-  own storage (a config module, a JSON file, a database table — anything
+  own storage (a config module, a JSON file, a database table, anything
   that produces a `Claim[]`) and your own trigger (a CI step, a manual
   script run, a scheduled task in whatever system you already use).
 - **`evidenceRef` is an opaque generic on purpose.** This library doesn't
-  assume it's a file path, a URL, or anything specific — `Claim<EvidenceRef
+  assume it's a file path, a URL, or anything specific: `Claim<EvidenceRef
   = string>` lets you supply a richer type (e.g. `{ kind: 'test' | 'url'
   | 'file'; ref: string }`) if a plain string isn't enough for your system.
   It never opens, fetches or interprets the value. Only these are read as
@@ -476,8 +673,8 @@ characters).
 - [`grounding-kit`](https://github.com/lkopietz3-byte/grounding-kit) checks
   that sentences of AI-generated text carry citation markers that point into an
   evidence map you supply. It is not a verifier for the claims tracked here:
-  its own README says its default support check is naive word overlap, not
-  entailment. Neither kit checks that a linked reference proves a claim's
+  its own README says its built-in support check is lexical word overlap,
+  not a judgment of truth. Neither kit checks that a linked reference proves a claim's
   text.
 
 ## Files
@@ -485,7 +682,7 @@ characters).
 ```
 src/
   types.ts        Claim, IsoDateString, ClaimStatus, EvaluatedClaim
-  registry.ts     createClaimsRegistry() — minimal in-memory registration
+  registry.ts     createClaimsRegistry(), minimal in-memory registration
   appears.ts      checkAppearsIn, assertAppearsIn (page text vs registered wording)
   checks.ts       evaluateClaim, checkStaleness, checkEvidenceLinked,
                   generateClaimsReport, formatClaimsReportAsText
@@ -495,6 +692,9 @@ src/
   validate.ts     internal: argument checks and one-time input copies (not exported)
   index.ts        Barrel export
 test/
+  appears-in.test.ts   checkAppearsIn and assertAppearsIn: verdict rows, scaling
+  html-recipe.test.ts  the htmlToText recipe shown in this README, run as shown
+  recipes/             the recipe source that the README block must match
   claims.test.ts     Toy SaaS ("TaskFlow") example exercising every function
   validation.test.ts argument validation (maxAgeDays, now, claims)
   dates.test.ts      verifiedAt parsing, formats, and time zone/DST behavior

@@ -1,4 +1,4 @@
-# claims-registry-kit — agent instructions
+# claims-registry-kit, agent instructions
 
 A dependency-free TypeScript library for tracking public claims, their evidence references, and their review freshness.
 
@@ -13,6 +13,7 @@ A dependency-free TypeScript library for tracking public claims, their evidence 
 - `npm run typecheck`
 - `npm run test`
 - `npm run build`
+- `npm run attw` checks the packed types; `npm run audit:dependencies` audits the lockfile.
 - `npm run verify:package` packs and installs the tarball offline; run `npm run build` first.
 
 ## Rules
@@ -29,6 +30,7 @@ See [docs/REVIEW_READINESS.md](docs/REVIEW_READINESS.md) for review cadence, dec
 
 ## Code Review Rules
 
+- `checkAppearsIn` matches exact wording on text only; keep it one linear pass, and keep the README `htmlToText` block identical to `test/recipes/html-to-text.ts` (a test enforces it).
 - Preserve status precedence: absent usable evidence is unverified even with a recent date; malformed, unparseable, overdue or too-far-future dates are stale. Bare dates retain 14-hour future tolerance; explicit timestamps have none.
 - Evaluate from a single validated snapshot and reject malformed claims or bad policy/clock inputs instead of returning a plausible status. Preserve the documented omitted-now current-time default and explicit-clock reproducibility.
 - Do not treat an evidence reference as proof: the kit does not open or assess it. Preserve duplicate-ID rejection and the documented shallow-copy boundary; nested evidence values remain shared unless the API deliberately changes.

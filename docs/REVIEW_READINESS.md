@@ -27,6 +27,7 @@ Read from the current `package.json`. These are declared gates, not execution re
 - `npm run build`: `node -e "require('fs').rmSync('dist',{recursive:true,force:true})" && tsc -p tsconfig.build.json`
 - `npm run verify:package`: `node scripts/verify-package.mjs`
 - `npm run attw`: `attw --pack . --ignore-rules cjs-resolves-to-esm`
+- `npm run audit:dependencies`: `npm audit --package-lock-only --include=dev --ignore-scripts --audit-level=low`
 
 Local tests, hosted authorization, installed package behavior, deployment and buyer evidence are separate outcomes. A dated receipt applies to its recorded revision.
 

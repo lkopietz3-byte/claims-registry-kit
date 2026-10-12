@@ -87,6 +87,15 @@ const rows: Row[] = [
   { name: 'blank claim text never matches', text: 'anything', claimText: '   ', expected: 'missing' },
   { name: 'zero-width-only claim text never matches', text: 'anything', claimText: '​​', expected: 'missing' },
   { name: 'empty page text', text: '', claimText: 'Free for teams', expected: 'missing' },
+  // Field-trial rows. These pin documented limits, so a change to any of them is a deliberate one.
+  { name: 'limit: words glued by markup extraction are not a match', text: 'Revenue layersNever monetized How we handle it', claimText: 'Never monetized', expected: 'missing' },
+  { name: 'limit: a quoted mention of the wording counts as shown', text: 'The label \u201cEarning now\u201d reflects whichever programs are live.', claimText: 'Earning now', expected: 'present' },
+  { name: 'limit: a price matches literally, $25 is not $25.00', text: 'Pro is $25.00 a month', claimText: '$25 a month', expected: 'missing' },
+  { name: 'limit: table separators left in the text split a multi-word claim', text: 'Certification | Status SOC 2 | Compliant ISO 27001 | Planned', claimText: 'SOC 2 Compliant', expected: 'missing' },
+  { name: 'limit: abbreviations are not the same wording', text: 'Includes 1M events and 5k replays per month', claimText: 'Includes 1 million events and 5,000 web replays each month', expected: 'missing' },
+  { name: 'limit: a changed number is a different wording', text: 'Uptime of 99.99% guaranteed', claimText: '99.9% uptime', expected: 'missing' },
+  { name: 'limit: ignoreCase does not fold a sharp s', text: 'Stra\u00dfe', claimText: 'STRASSE', options: { ignoreCase: true }, expected: 'missing' },
+  { name: 'limit: a zero-width space between words joins them', text: 'Start a free\u200btrial today', claimText: 'free trial', expected: 'missing' },
 ];
 
 describe('verdict table: appearsIn', () => {
