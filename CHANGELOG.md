@@ -89,6 +89,9 @@ report or CI check after upgrading and read the diff.
   exact approved wording, not paraphrase, that `present` means the text is in
   the string you passed (not that a visitor sees it), that numbers match
   literally (`$25` is not `$25.00`), and that `'current'` is not "approved".
+  The recipe reads `&#128;` to `&#159;` the way a browser does (`&#146;` is a
+  right single quote), and the README notes that a close tag inside a
+  `<textarea>` in a hidden element ends the hidden section early.
 - The age limit is inclusive and `ageDays` is display-only, so a report can show
   `90d old` for a claim that is stale under `maxAgeDays: 90`.
 - `generateClaimsReport` and the checks still do not look for duplicate ids,

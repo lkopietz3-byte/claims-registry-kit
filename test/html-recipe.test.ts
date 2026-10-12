@@ -28,6 +28,9 @@ const rows: Row[] = [
   { name: 'an apostrophe written as a numeric entity', html: '<p>Always confirm details on the provider&#x27;s site.</p>', claimText: "Always confirm details on the provider's site", expected: 'present' },
   { name: 'a decimal entity and a named entity', html: '<p>Pay&#39;s fee &amp; terms</p>', claimText: "Pay's fee & terms", expected: 'present' },
   { name: 'an escaped tag is text, not a tag', html: '<p>Type &lt;b&gt; for bold</p>', claimText: 'Type <b> for bold', expected: 'present' },
+  { name: 'review: a legacy numeric reference maps as a browser maps it (&#146; is a right quote)', html: '<p>Provider&#146;s fee</p>', claimText: 'Provider\u2019s fee', expected: 'present' },
+  { name: 'review: a legacy numeric reference maps as a browser maps it (&#128; is a euro sign)', html: '<p>Plans start at &#128;20/month</p>', claimText: 'Plans start at \u20ac20/month', expected: 'present' },
+  { name: 'review: a hex legacy numeric reference maps too (&#x96; is an en dash)', html: '<p>Mon&#x96;Fri</p>', claimText: 'Mon\u2013Fri', expected: 'present' },
   { name: 'an unknown entity is left as written', html: '<p>Fish &chips; here</p>', claimText: 'Fish chips here', expected: 'missing' },
   { name: 'a double-encoded entity decodes once', html: '<p>&amp;lt;</p>', claimText: '&lt;', expected: 'present' },
   { name: 'adjacent inline elements do not glue words together', html: '<nav><a href="/a">Revenue layers</a><a href="/b">Never monetized</a></nav>', claimText: 'Never monetized', expected: 'present' },
@@ -66,6 +69,7 @@ const rows: Row[] = [
   { name: 'LIMIT: a hidden self-closing svg is read as open and hides the rest of its parent', html: '<div><svg style="display:none" /><p>Free for teams</p></div>', claimText: 'Free for teams', expected: 'missing' },
   { name: 'review: a hidden element with a slash stays hidden inside foreignObject', html: '<svg><foreignObject><div hidden/>Free for teams</div></foreignObject></svg>', claimText: 'Free for teams', expected: 'missing' },
   { name: 'review: a slash that ends an unquoted attribute value is not a self-close', html: '<svg style="display:none" data-x=x/>Free for teams</svg>', claimText: 'Free for teams', expected: 'missing' },
+  { name: 'LIMIT: a close tag inside a textarea in a hidden element ends the hidden section early', html: '<div hidden><textarea></div>Free for teams</textarea></div>', claimText: 'Free for teams', expected: 'present' },
   // Limits the README names. These pin what the recipe does NOT do.
   { name: 'LIMIT: a CSS class such as "hidden" is not evaluated', html: '<span class="hidden text-xs">Verify before you rely on it.</span>', claimText: 'Verify before you rely on it', expected: 'present' },
   { name: 'LIMIT: negation is still the same words', html: '<p>We are not SOC 2 compliant</p>', claimText: 'SOC 2 compliant', expected: 'present' },

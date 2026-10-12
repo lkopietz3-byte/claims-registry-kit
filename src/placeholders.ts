@@ -88,7 +88,10 @@ export function readPlaceholders(options: unknown): PlaceholderSet {
     );
   }
   const list: unknown[] = refs;
-  const length = list.length;
+  const length: unknown = list.length;
+  if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0) {
+    throw new TypeError(`${PREFIX}options.placeholderRefs has an invalid length`);
+  }
   const keys = new Set<string>();
   for (let i = 0; i < length; i += 1) {
     const entry = list[i];

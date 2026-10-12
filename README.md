@@ -311,12 +311,18 @@ const NAMED: Record<string, string> = {
   copy: '\u00a9', reg: '\u00ae', trade: '\u2122',
 };
 
+// A browser reads numeric references 128 to 159 as Windows-1252 (&#146; is a
+// right single quote). The five unassigned codes stay as they are.
+const C1 = '\u20ac\u0081\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\u008d\u017d\u008f' +
+  '\u0090\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\u009d\u017e\u0178';
+
 function decodeEntities(text: string): string {
   return text.replace(/&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([A-Za-z][A-Za-z0-9]{1,31}));/g, (all, dec, hex, name) => {
     if (dec !== undefined || hex !== undefined) {
       const code = dec !== undefined ? Number(dec) : parseInt(hex as string, 16);
       const bad = code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff);
-      return bad ? '\ufffd' : String.fromCodePoint(code);
+      if (bad) return '\ufffd';
+      return code >= 0x80 && code <= 0x9f ? C1[code - 0x80] : String.fromCodePoint(code);
     }
     return Object.hasOwn(NAMED, name as string) ? NAMED[name as string] : all; // an unknown name stays as written
   });
@@ -437,7 +443,9 @@ JavaScript, and it does not model HTML's implied end tags, so an unclosed hidden
 elements that are not void, as a browser does for HTML (`<div hidden/>` opens a
 hidden `div`). That is the safe direction for SVG and MathML too: a hidden
 self-closing `<svg ... />` is read as open and hides the rest of its parent,
-which fails toward `missing`. It is for HTML, not for
+which fails toward `missing`. It does not treat the inside of a `<textarea>`
+as plain text, so a `</div>` written inside a `<textarea>` in a hidden element
+can end the hidden section early. It is for HTML, not for
 JSX or XML. If the text your visitors see
 depends on CSS or scripts, take it from a rendered page instead (for example a
 browser's `innerText`) and pass that string. For Markdown, render it to HTML

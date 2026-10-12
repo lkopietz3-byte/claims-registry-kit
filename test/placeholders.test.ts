@@ -150,3 +150,17 @@ describe('invalid options throw instead of silently changing a verdict', () => {
     expect(() => generateClaimsReport([claim()], 90, NOW, bad)).toThrow(TypeError);
   });
 });
+
+describe('placeholderRefs with an unreadable length', () => {
+  for (const bad of [Number.NaN, undefined, -1, 1.5, Infinity]) {
+    it(`throws instead of switching placeholder detection off (length ${String(bad)})`, () => {
+      const refs = new Proxy(['TODO'], {
+        get(target, key, receiver) {
+          if (key === 'length') return bad;
+          return Reflect.get(target, key, receiver) as unknown;
+        },
+      });
+      expect(() => statusOf('TODO', { placeholderRefs: refs })).toThrow(/length/);
+    });
+  }
+});
