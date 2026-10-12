@@ -3,6 +3,7 @@
 // scripts/verify-package.mjs; not run directly.
 import assert from 'node:assert/strict';
 import {
+  DEFAULT_PLACEHOLDER_REFS,
   checkEvidenceLinked,
   checkStaleness,
   createClaimsRegistry,
@@ -94,6 +95,25 @@ assert.equal(
   'stale',
 );
 
+// A claim is stale when MORE than maxAgeDays x 24h have elapsed (23h59m past is stale).
+assert.equal(
+  evaluateClaim({ ...claims[0], verifiedAt: '2026-05-03T00:01:00Z' }, 90, NOW).status,
+  'stale',
+);
+assert.equal(evaluateClaim({ ...claims[0], verifiedAt: '2026-05-04' }, 90, NOW).status, 'current');
+
+// A placeholder reference is no evidence; a real one that contains the word is.
+assert.deepEqual([...DEFAULT_PLACEHOLDER_REFS], ['TODO', 'TBD', 'N/A', 'none', '-', 'see above']);
+assert.equal(evaluateClaim({ ...claims[0], evidenceRef: 'TODO' }, 90, NOW).status, 'unverified');
+assert.equal(
+  evaluateClaim({ ...claims[0], evidenceRef: 'https://example.com/todo-list' }, 90, NOW).status,
+  'current',
+);
+assert.equal(
+  evaluateClaim({ ...claims[0], evidenceRef: 'TODO' }, 90, NOW, { placeholderRefs: false }).status,
+  'current',
+);
+
 // A bad argument throws instead of silently marking everything current.
 assert.throws(() => evaluateClaim(claims[0], Number.NaN, NOW), RangeError);
 assert.throws(() => generateClaimsReport(claims, 90, new Date(Number.NaN)), RangeError);
@@ -104,6 +124,7 @@ registry.registerClaim(claims[0]);
 registry.registerClaim(claims[1]);
 assert.throws(() => registry.registerClaim(claims[0]), /already registered/);
 assert.deepEqual(registry.getClaims().map((c) => c.id), ['realtime-sync', 'soc2-claim']);
+assert.throws(() => registry.registerClaim({ ...claims[0], id: 'realtime-sync\u200b' }), /looks the same/);
 const registryReport = generateClaimsReport(registry.getClaims(), 90, NOW);
 assert.deepEqual(registryReport.counts, { current: 1, stale: 1, unverified: 0, total: 2 });
 

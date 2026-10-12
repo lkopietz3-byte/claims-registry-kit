@@ -1,5 +1,5 @@
 import type { Claim } from './types.js';
-import { escapeForDisplay } from './text.js';
+import { escapeForDisplay, lookAlikeKey, spellOut } from './text.js';
 import { assertClaimId, snapshotClaim } from './validate.js';
 
 /**
@@ -28,7 +28,12 @@ export interface ClaimsRegistry<EvidenceRef = string> {
   /**
    * Add a claim to the registry. Throws if a claim with the same `id` is
    * already registered — silently overwriting a claim would defeat the
-   * point of a registry meant to catch drift. Also throws `TypeError` if
+   * point of a registry meant to catch drift. Also throws `Error`, naming both
+   * spellings, when the `id` only LOOKS like a registered one: the two are the
+   * same after dropping invisible characters (zero-width spaces, bidi marks,
+   * the soft hyphen, variation selectors, ...), Unicode NFC normalization and
+   * trimming surrounding whitespace. Case, inner spacing and look-alike
+   * letters from other scripts still make ids different. Also throws `TypeError` if
    * `claim` isn't a plain (or null-prototype) object, or its `id` isn't a
    * string that shows something (empty, whitespace-only and invisible-only
    * ids are rejected): this registry is keyed by `id`, so a claim without
@@ -55,11 +60,13 @@ export interface ClaimsRegistry<EvidenceRef = string> {
  * - `registerClaim` accepts only a plain or null-prototype object whose `id`
  *   is a string that shows something (not empty, not whitespace or invisible
  *   characters only) and throws `TypeError` otherwise. A second claim with an
- *   `id` already registered throws `Error`, and the original is kept. The
+ *   `id` already registered, or one that only looks the same (see
+ *   `registerClaim`), throws `Error`, and the original is kept. The
  *   claim is copied once, so a getter or a later mutation of the object you
  *   passed cannot change the stored `id` or the key it is stored under.
  * - `getClaims` returns claims in registration order; `getClaim(id)` finds a
- *   claim by exact string `id` only, and returns `undefined` for anything else
+ *   claim by exact string `id` only (the look-alike rule applies when
+ *   registering, not when looking up), and returns `undefined` for anything else
  *   (including a non-string key).
  * - Copies are SHALLOW. Replacing a field on an object you registered or got
  *   back never reaches the registry, but a nested array or object (for
@@ -77,6 +84,8 @@ export interface ClaimsRegistry<EvidenceRef = string> {
  */
 export function createClaimsRegistry<EvidenceRef = string>(): ClaimsRegistry<EvidenceRef> {
   const claims = new Map<string, Claim<EvidenceRef>>();
+  // lookAlikeKey(id) -> the exact id registered under it.
+  const lookAlikes = new Map<string, string>();
 
   return {
     registerClaim(claim) {
@@ -90,7 +99,18 @@ export function createClaimsRegistry<EvidenceRef = string>(): ClaimsRegistry<Evi
           `claims-registry-kit: a claim with id "${escapeForDisplay(copy.id)}" is already registered`,
         );
       }
+      // A different spelling that reads the same (trailing space, zero-width
+      // character, NFC vs NFD) is rejected, never silently merged or kept as
+      // a second claim that looks like the first.
+      const key = lookAlikeKey(copy.id);
+      const existing = lookAlikes.get(key);
+      if (existing !== undefined) {
+        throw new Error(
+          `claims-registry-kit: claim id "${spellOut(copy.id)}" looks the same as the already registered id "${spellOut(existing)}" (they differ only in whitespace, invisible characters or Unicode normalization); use one spelling`,
+        );
+      }
       claims.set(copy.id, copy);
+      lookAlikes.set(key, copy.id);
     },
     getClaims() {
       // Shallow-copy on the way out too, so mutating a returned claim can't
@@ -103,6 +123,7 @@ export function createClaimsRegistry<EvidenceRef = string>(): ClaimsRegistry<Evi
     },
     clear() {
       claims.clear();
+      lookAlikes.clear();
     },
   };
 }

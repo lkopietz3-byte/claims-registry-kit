@@ -4,6 +4,7 @@
 // (this kit has none as a dev dependency), so no `node:` imports — a tiny
 // local assert stands in.
 import {
+  DEFAULT_PLACEHOLDER_REFS,
   checkEvidenceLinked,
   checkStaleness,
   createClaimsRegistry,
@@ -14,6 +15,7 @@ import {
   type ClaimsReport,
   type ClaimStatus,
   type EvaluatedClaim,
+  type EvidenceOptions,
   type IsoDateString,
 } from 'claims-registry-kit';
 
@@ -73,5 +75,13 @@ const registry = createClaimsRegistry<FileRef>();
 registry.registerClaim(richClaim);
 const fromRegistry: Claim<FileRef>[] = registry.getClaims();
 assertEqual(fromRegistry[0]?.evidenceRef.kind, 'file', 'registered evidenceRef.kind');
+
+// The placeholder option, typed: a list built from the exported defaults, and false.
+const extended: EvidenceOptions = { placeholderRefs: [...DEFAULT_PLACEHOLDER_REFS, 'wip'] };
+const off: EvidenceOptions = { placeholderRefs: false };
+const optioned: EvaluatedClaim = evaluateClaim(stringClaim, 90, now, extended);
+const unoptioned: EvaluatedClaim[] = checkEvidenceLinked(claims, now, off);
+assertEqual(optioned.status satisfies ClaimStatus, 'current', 'optioned status');
+assertEqual(unoptioned.length, 0, 'unoptioned.length');
 
 console.log('consumer-probe.mts: type probe assembled without error');

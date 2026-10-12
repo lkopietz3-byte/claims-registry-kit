@@ -1,6 +1,7 @@
 import { parseIsoInstant } from './dates.js';
+import { placeholderKey, readPlaceholders, type PlaceholderSet } from './placeholders.js';
 import { displayValue, isVisiblyBlank } from './text.js';
-import type { Claim, ClaimStatus, EvaluatedClaim } from './types.js';
+import type { Claim, ClaimStatus, EvaluatedClaim, EvidenceOptions } from './types.js';
 import {
   assertClaimId,
   assertMaxAgeDays,
@@ -27,23 +28,46 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  */
 const MAX_BARE_DATE_FUTURE_TOLERANCE_MS = 14 * 60 * 60 * 1000;
 
+/**
+ * `maxAgeDays` in milliseconds. A fractional policy times 86,400,000 can land
+ * a hair off the whole millisecond it means (`0.7 * 86400000` is
+ * 60479999.99999999), which would make a claim exactly at the limit read
+ * stale. A product within a few floating-point steps of a whole millisecond is
+ * snapped to it; anything else is left exact.
+ */
+function ageLimitMs(maxAgeDays: number): number {
+  const limit = maxAgeDays * MS_PER_DAY;
+  if (!Number.isFinite(limit)) return limit;
+  const whole = Math.round(limit);
+  return Math.abs(limit - whole) <= Math.abs(limit) * 4 * Number.EPSILON ? whole : limit;
+}
+
 interface Age {
-  /** Whole elapsed 24-hour periods; `null` when `verifiedAt` is unparseable. */
+  /**
+   * Whole elapsed 24-hour periods, rounded down, for display only; `null`
+   * when `verifiedAt` is unparseable. The status never reads this number.
+   */
   ageDays: number | null;
+  /** Exact elapsed milliseconds (negative for a future date); `NaN` when unparseable. */
+  elapsedMs: number;
   /** False when `verifiedAt` is unparseable or too far in the future to count as a verification. */
   usable: boolean;
 }
 
 function computeAge(verifiedAt: unknown, nowMs: number): Age {
   const parsed = parseIsoInstant(verifiedAt);
-  if (parsed === null) return { ageDays: null, usable: false };
+  if (parsed === null) return { ageDays: null, elapsedMs: Number.NaN, usable: false };
   const tolerance = parsed.dateOnly ? MAX_BARE_DATE_FUTURE_TOLERANCE_MS : 0;
   const elapsedMs = nowMs - parsed.instant;
   if (elapsedMs < -tolerance) {
-    return { ageDays: Math.floor(elapsedMs / MS_PER_DAY), usable: false };
+    return { ageDays: Math.floor(elapsedMs / MS_PER_DAY), elapsedMs, usable: false };
   }
   // Within tolerance a slightly-future date reads as "just now", never as -1.
-  return { ageDays: Math.max(0, Math.floor(elapsedMs / MS_PER_DAY)), usable: true };
+  return {
+    ageDays: Math.max(0, Math.floor(elapsedMs / MS_PER_DAY)),
+    elapsedMs,
+    usable: true,
+  };
 }
 
 /** The values that mean "no evidence": nullish, `false`, and the zeros (`0`, `-0`, `NaN`, `0n`). */
@@ -61,8 +85,12 @@ function isMissingScalar(value: unknown): boolean {
  *   U+061C and the isolates U+2066-2069, variation selectors, Hangul
  *   fillers, ...) and control characters. Visible text in any script,
  *   emoji, and visible text wrapped in bidi controls all count as present.
- *   `'TODO'` and `'n/a'` also count as present — this function cannot tell
- *   a placeholder from a real reference, only whether one was typed.
+ *   A string that is exactly a placeholder (`'TODO'`, `'TBD'`, `'N/A'`,
+ *   `'none'`, `'-'`, `'see above'` by default; compared ignoring case,
+ *   surrounding whitespace and invisible characters) is missing too: it is
+ *   the reference field saying there is no reference. A reference that only
+ *   contains one of those words (`'https://example.com/todo-list'`) is
+ *   present. See `EvidenceOptions` to change or disable the list.
  * - An array is "present" if at least one of its elements is, checked
  *   recursively (a list of evidence refs, or a list of lists). Repeated or
  *   cyclic sub-arrays are each visited only once, so this always terminates
@@ -78,15 +106,16 @@ function isMissingScalar(value: unknown): boolean {
  * The same rule applies to every element inside an array, so `[false]`, `[0]`
  * and `['']` are missing and an array with no present element is missing.
  */
-function hasEvidence(evidenceRef: unknown): boolean {
+function hasEvidence(evidenceRef: unknown, placeholders: PlaceholderSet): boolean {
   const stack: unknown[] = [evidenceRef];
   const visitedArrays = new Set<unknown[]>();
   while (stack.length > 0) {
     const item = stack.pop();
     if (isMissingScalar(item)) continue;
     if (typeof item === 'string') {
-      if (!isVisiblyBlank(item)) return true;
-      continue;
+      if (isVisiblyBlank(item)) continue;
+      if (placeholders !== null && placeholders.has(placeholderKey(item))) continue;
+      return true;
     }
     if (!Array.isArray(item)) return true;
     if (visitedArrays.has(item)) continue;
@@ -118,6 +147,20 @@ function hasEvidence(evidenceRef: unknown): boolean {
  * explicit timestamp — an exact, zoned instant — gets none. Either way, a
  * wrong future date can't hide a claim from review.
  *
+ * A claim is `'stale'` when MORE than `maxAgeDays` x 24 hours have elapsed
+ * since `verifiedAt`, compared in exact milliseconds. The limit itself is
+ * inclusive: a claim exactly `maxAgeDays` old is still `'current'`, and one
+ * millisecond older is `'stale'`. `maxAgeDays` may be fractional (`0.5` is 12
+ * hours) or `0` (only a claim verified this instant is current). `ageDays` is
+ * the elapsed time rounded down to whole days, for display, and the status
+ * never reads it: a claim 90 days and 23 hours old reports `ageDays: 90` and
+ * is `'stale'` under `maxAgeDays: 90`.
+ *
+ * An `evidenceRef` that is only a placeholder (`TODO`, `TBD`, `N/A`, `none`,
+ * `-`, `see above`) is missing evidence, so the claim is `'unverified'`;
+ * `options.placeholderRefs` changes or disables that list (see
+ * `EvidenceOptions`).
+ *
  * The claim, `maxAgeDays` and `now` are each read once. `claim` is copied a
  * single time (shallow) and the status is decided from, and the result built
  * from, that copy, so a getter or Proxy cannot make the returned fields differ
@@ -130,16 +173,20 @@ function hasEvidence(evidenceRef: unknown): boolean {
  * @throws {RangeError} if `maxAgeDays` is negative or non-finite, or `now`
  * is an Invalid Date. A bad policy or clock must fail loudly here rather
  * than silently marking every claim `'current'`.
+ * @throws {TypeError} if `options` is not an object, or `options.placeholderRefs`
+ * is not `false` or an array of strings.
  */
 export function evaluateClaim<EvidenceRef = string>(
   claim: Claim<EvidenceRef>,
   maxAgeDays: number,
   now: Date = new Date(),
+  options?: EvidenceOptions,
 ): EvaluatedClaim<EvidenceRef> {
   const snapshot = snapshotClaim<EvidenceRef>(claim, 'claim');
   assertMaxAgeDays(maxAgeDays);
   const nowMs = readNow(now);
-  return evaluate(snapshot, maxAgeDays, nowMs);
+  const placeholders = readPlaceholders(options);
+  return evaluate(snapshot, maxAgeDays, nowMs, placeholders);
 }
 
 /**
@@ -147,17 +194,21 @@ export function evaluateClaim<EvidenceRef = string>(
  * arguments and pass a one-time copy of the claim, so the fields judged here
  * are the fields returned.
  */
-function evaluate<EvidenceRef>(
+export function evaluate<EvidenceRef>(
   claim: Claim<EvidenceRef>,
   maxAgeDays: number,
   nowMs: number,
+  placeholders: PlaceholderSet,
 ): EvaluatedClaim<EvidenceRef> {
-  const { ageDays, usable } = computeAge(claim.verifiedAt, nowMs);
+  const { ageDays, elapsedMs, usable } = computeAge(claim.verifiedAt, nowMs);
 
+  // Stale only when strictly MORE than the allowed time has elapsed, compared
+  // in exact milliseconds (not in floored whole days), so exactly at the limit
+  // is still current and one millisecond past it is stale.
   let status: ClaimStatus;
-  if (!hasEvidence(claim.evidenceRef)) {
+  if (!hasEvidence(claim.evidenceRef, placeholders)) {
     status = 'unverified';
-  } else if (!usable || ageDays === null || ageDays > maxAgeDays) {
+  } else if (!usable || ageDays === null || elapsedMs > ageLimitMs(maxAgeDays)) {
     status = 'stale';
   } else {
     status = 'current';
@@ -167,8 +218,9 @@ function evaluate<EvidenceRef>(
 }
 
 /**
- * Which claims have gone stale: `evidenceRef` is present, but `verifiedAt`
- * is older than `maxAgeDays`, further in the future than its format's
+ * Which claims have gone stale: `evidenceRef` is present, but more than
+ * `maxAgeDays` x 24 hours have elapsed since `verifiedAt` (exactly at the
+ * limit is still current), `verifiedAt` is further in the future than its format's
  * tolerance, or unparseable — see `evaluateClaim` for exactly how each is
  * decided.
  *
@@ -188,12 +240,14 @@ export function checkStaleness<EvidenceRef = string>(
   claims: readonly Claim<EvidenceRef>[],
   maxAgeDays: number,
   now: Date = new Date(),
+  options?: EvidenceOptions,
 ): EvaluatedClaim<EvidenceRef>[] {
   const list = snapshotClaimList<EvidenceRef>(claims);
   assertMaxAgeDays(maxAgeDays);
   const nowMs = readNow(now);
+  const placeholders = readPlaceholders(options);
   return list
-    .map((claim) => evaluate(claim, maxAgeDays, nowMs))
+    .map((claim) => evaluate(claim, maxAgeDays, nowMs, placeholders))
     .filter((evaluated) => evaluated.status === 'stale');
 }
 
@@ -211,7 +265,9 @@ export function checkStaleness<EvidenceRef = string>(
  *
  * A string `evidenceRef` counts as present unless it shows nothing (empty, or
  * only whitespace, control characters and `Default_Ignorable_Code_Point`
- * characters such as zero-width spaces and bidi controls); an array counts as
+ * characters such as zero-width spaces and bidi controls) or is exactly a
+ * placeholder (`TODO`, `TBD`, `N/A`, `none`, `-`, `see above` by default; see
+ * `EvidenceOptions`); an array counts as
  * present if any of its elements do, checked recursively. `null`,
  * `undefined`, `false`, `0`, `-0`, `NaN` and `0n` are missing, at the top
  * level and inside a list. See `Claim`'s doc comment for why any other value
@@ -230,13 +286,15 @@ export function checkStaleness<EvidenceRef = string>(
 export function checkEvidenceLinked<EvidenceRef = string>(
   claims: readonly Claim<EvidenceRef>[],
   now: Date = new Date(),
+  options?: EvidenceOptions,
 ): EvaluatedClaim<EvidenceRef>[] {
   const list = snapshotClaimList<EvidenceRef>(claims);
   const nowMs = readNow(now);
+  const placeholders = readPlaceholders(options);
   // The policy is irrelevant here (evidence presence outranks age), so an
   // unlimited one keeps this on the same code path as every other entry point.
   return list
-    .map((claim) => evaluate(claim, Number.POSITIVE_INFINITY, nowMs))
+    .map((claim) => evaluate(claim, Number.POSITIVE_INFINITY, nowMs, placeholders))
     .filter((evaluated) => evaluated.status === 'unverified');
 }
 
@@ -269,8 +327,8 @@ export interface ClaimsReport<EvidenceRef = string> {
  *
  * `current`, `stale`, and `unverified` each preserve the order claims
  * appear in the input array. Duplicate ids are not checked here (only
- * `createClaimsRegistry` rejects them), so two claims with the same `id` can
- * land in different buckets.
+ * `createClaimsRegistry` rejects them, including look-alike spellings), so two
+ * claims with the same `id` can land in different buckets.
  *
  * @throws {TypeError} if `claims` is not an array, has a hole, or contains an
  * entry that is not a plain or null-prototype object, or an entry whose `id`
@@ -288,6 +346,7 @@ export function generateClaimsReport<EvidenceRef = string>(
   claims: readonly Claim<EvidenceRef>[],
   maxAgeDays: number,
   now: Date = new Date(),
+  options?: EvidenceOptions,
 ): ClaimsReport<EvidenceRef> {
   const list = snapshotClaimList<EvidenceRef>(claims);
   list.forEach((claim, i) => {
@@ -295,7 +354,8 @@ export function generateClaimsReport<EvidenceRef = string>(
   });
   assertMaxAgeDays(maxAgeDays);
   const nowMs = readNow(now);
-  const evaluated = list.map((claim) => evaluate(claim, maxAgeDays, nowMs));
+  const placeholders = readPlaceholders(options);
+  const evaluated = list.map((claim) => evaluate(claim, maxAgeDays, nowMs, placeholders));
 
   const current = evaluated.filter((c) => c.status === 'current');
   const stale = evaluated.filter((c) => c.status === 'stale');

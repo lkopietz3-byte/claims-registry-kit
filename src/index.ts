@@ -1,4 +1,12 @@
-export type { IsoDateString, Claim, ClaimStatus, EvaluatedClaim } from './types.js';
+export type {
+  IsoDateString,
+  Claim,
+  ClaimStatus,
+  EvaluatedClaim,
+  EvidenceOptions,
+} from './types.js';
+
+export { DEFAULT_PLACEHOLDER_REFS } from './placeholders.js';
 
 export { createClaimsRegistry } from './registry.js';
 export type { ClaimsRegistry } from './registry.js';
@@ -11,3 +19,12 @@ export {
   formatClaimsReportAsText,
 } from './checks.js';
 export type { ClaimsReport } from './checks.js';
+
+export { checkAppearsIn, assertAppearsIn } from './appears.js';
+export type {
+  AppearsInVerdict,
+  AppearsInResult,
+  AppearsInReport,
+  AppearsInOptions,
+  ClaimLookup,
+} from './appears.js';

@@ -33,7 +33,8 @@ export type IsoDateString = string;
  * whatever your own system already uses to point at proof — a plain string
  * by default, or a richer caller-defined type if you supply one. The only
  * values read as "no evidence" are `null`, `undefined`, `false`, `0`, `-0`,
- * `NaN`, `0n`, a blank string and a list with no present entry; every other
+ * `NaN`, `0n`, a blank string, a placeholder string such as `'TODO'` (see
+ * `EvidenceOptions`) and a list with no present entry; every other
  * value (an object, `true`, a non-zero number) counts as present and is never
  * inspected. Nothing in
  * this library dereferences, fetches, or validates that reference — see
@@ -63,13 +64,15 @@ export interface Claim<EvidenceRef = string> {
  * drifting out of sync with the date math that produced it.
  *
  * - `'unverified'` — `evidenceRef` is missing or empty: `null`, `undefined`,
- *   `false`, `0`, `-0`, `NaN`, `0n`, a blank string, or a list with no
- *   present entry. This takes priority
+ *   `false`, `0`, `-0`, `NaN`, `0n`, a blank string, a placeholder string
+ *   (`'TODO'`, `'TBD'`, `'N/A'`, `'none'`, `'-'`, `'see above'` by default),
+ *   or a list with no present entry. This takes priority
  *   over staleness: a claim with no evidence is unverified regardless of
  *   how recent `verifiedAt` is. A fresh date next to an empty reference
  *   isn't evidence of anything.
- * - `'stale'` — `evidenceRef` is present, but `verifiedAt` is older than
- *   the caller's `maxAgeDays` policy, further in the future than its own
+ * - `'stale'` — `evidenceRef` is present, but more than `maxAgeDays` x 24
+ *   hours have elapsed since `verifiedAt` (exactly at the limit is still
+ *   current), `verifiedAt` is further in the future than its own
  *   format can honestly explain (a likely typo — see `evaluateClaim`), or
  *   doesn't parse as a date at all. All three are treated conservatively as
  *   stale so a bad date can't hide a claim from review.
@@ -84,11 +87,34 @@ export type ClaimStatus = 'current' | 'stale' | 'unverified';
 export interface EvaluatedClaim<EvidenceRef = string> extends Claim<EvidenceRef> {
   status: ClaimStatus;
   /**
-   * Whole elapsed 24-hour periods between `verifiedAt` and the evaluation's
-   * `now`. `null` when `verifiedAt` fails to parse as a date. Negative when
+   * Whole elapsed 24-hour periods (rounded down) between `verifiedAt` and the
+   * evaluation's `now`, for display only: the status is decided from the exact
+   * elapsed time, so a claim 90 days and 23 hours old shows `90` and is
+   * `'stale'` under `maxAgeDays: 90`. `null` when `verifiedAt` fails to parse as a date. Negative when
    * `verifiedAt` is far enough in the future to be treated as a typo rather
    * than clock skew (see `evaluateClaim`) — the status is `'stale'` in that
    * case, never `'current'`.
    */
   ageDays: number | null;
+}
+
+/**
+ * Options for how an `evidenceRef` is judged, accepted by `evaluateClaim`,
+ * `checkEvidenceLinked` and `generateClaimsReport`.
+ */
+export interface EvidenceOptions {
+  /**
+   * Strings that mean "no evidence yet" when they are the whole reference.
+   * Matched exactly, ignoring case, surrounding and repeated whitespace and
+   * invisible characters; a reference that only contains one of them (for
+   * example `https://example.com/todo-list`) is still linked.
+   *
+   * - Omitted: the defaults, `DEFAULT_PLACEHOLDER_REFS` (`TODO`, `TBD`,
+   *   `N/A`, `none`, `-`, `see above`).
+   * - A list: replaces the defaults. Spread `DEFAULT_PLACEHOLDER_REFS` to add
+   *   to them.
+   * - `false` or an empty list: no placeholder matching; only a blank
+   *   reference is missing.
+   */
+  placeholderRefs?: readonly string[] | false;
 }

@@ -5,6 +5,102 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.4.0] - unreleased
+
+### Breaking changes
+
+Each of these can change a verdict or throw where 0.3.1 did not. Re-run your
+report or CI check after upgrading and read the diff.
+
+- **Claims up to 24 hours past `maxAgeDays` are now `'stale'`.** Migration: if
+  a claim now flips at the boundary and you want the old cutoff, pass
+  `maxAgeDays + 1`; otherwise re-verify the claim.
+- **A placeholder `evidenceRef` (`TODO`, `TBD`, `N/A`, `none`, `-`, `see above`)
+  is now `'unverified'`, not `'current'` or `'stale'`.** Migration: replace the
+  placeholder with a real reference, or pass `{ placeholderRefs: false }` to
+  switch the rule off, or your own list to change it.
+- **`registerClaim` throws for an id that only looks like a registered one**
+  (trailing or leading space, invisible character, NFC versus NFD). It used to
+  register a second claim. Migration: clean the id at the source, or catch the
+  error and decide which spelling is right. `getClaim` stays an exact lookup.
+
+### Added
+
+- **`checkAppearsIn` and `assertAppearsIn`.** Check that published text (a pricing
+  or disclosure page) contains the current wording of registered claims.
+  Verdicts per claim: `present`, `stale` (shown, but the claim is no longer
+  current), `missing` and `unknown-id`. Text is compared after NFKC, whitespace
+  folding, dropping invisible characters and folding quotes and dashes; case
+  matters unless `ignoreCase` is set; matches must sit on word and number
+  boundaries. One linear pass for all claims. Also exports the types
+  `AppearsInVerdict`, `AppearsInResult`, `AppearsInReport`, `AppearsInOptions`
+  and `ClaimLookup`.
+  Invisible characters are removed before normalization, so a zero-width
+  character between a letter and its accent no longer blocks a match;
+  control-only claim text never matches; `now: null` and an invalid id-list
+  length throw; the placeholder policy is read once per call.
+
+### Fixed
+
+- **A claim could stay `'current'` up to 24 hours past `maxAgeDays`.** The age
+  limit was compared against whole days rounded down, so a claim 90 days and 23
+  hours old passed a 90-day policy, and a fractional `maxAgeDays` gave the wrong
+  verdict (`1.5` at 1.9 days, `0.5` at 20 hours and `0` at 23 hours 59 minutes
+  were all `'current'`). The limit is now compared in exact milliseconds.
+- **Look-alike duplicate ids were accepted by `createClaimsRegistry`.** An id
+  that differs from a registered one only by a trailing or leading space, a
+  zero-width or other invisible character, or NFC versus NFD normalization is
+  now rejected with an error that names both spellings.
+- **A placeholder `evidenceRef` counted as linked evidence.** `TODO`, `TBD`,
+  `N/A`, `none`, `-` and `see above` gave `'current'` with a fresh date. They
+  are now `'unverified'`.
+
+### Changed
+
+- **Behavior change: the age rule.** A claim is `'stale'` when MORE than
+  `maxAgeDays` x 24 hours have elapsed; exactly at the limit is still
+  `'current'` (inclusive), as before. Claims between the old and new cutoff
+  (up to 24 hours past it) move from `'current'` to `'stale'`. A bare
+  `YYYY-MM-DD` counts from UTC midnight. `ageDays` is unchanged: whole elapsed
+  days, rounded down, for display only.
+- **Behavior change: placeholder references.** A claim whose `evidenceRef` is
+  exactly a placeholder (ignoring case, surrounding and repeated whitespace,
+  invisible characters and full-width letters) moves from `'current'` or
+  `'stale'` to `'unverified'`. References that merely contain those words
+  (`https://example.com/todo-list`, `none-such-ref-123`) are unaffected.
+  Switch it off with `{ placeholderRefs: false }` or supply your own list.
+- **Behavior change: the registry.** `registerClaim` now throws for a look-alike
+  id where it used to register a second claim. `getClaim` stays an exact lookup.
+- New optional last argument `options?: EvidenceOptions` on `evaluateClaim`,
+  `checkStaleness`, `checkEvidenceLinked` and `generateClaimsReport`, and a new
+  export `DEFAULT_PLACEHOLDER_REFS` (the type `EvidenceOptions` is also
+  exported). Existing calls are unchanged.
+- Two tests in `test/evidence.test.ts` asserted that `'TODO'` and `'n/a'` count
+  as present; they now assert the new behavior.
+
+### Documented
+
+- **Getting page text from HTML.** The README has a short `htmlToText` recipe
+  (tags become spaces, entities are decoded, scripts, styles, comments and
+  hidden elements are dropped). It is tested here, linear in page size, and not
+  part of the package. The README now says plainly that `checkAppearsIn` matches
+  exact approved wording, not paraphrase, that `present` means the text is in
+  the string you passed (not that a visitor sees it), that numbers match
+  literally (`$25` is not `$25.00`), and that `'current'` is not "approved".
+  The recipe reads `&#128;` to `&#159;` the way a browser does (`&#146;` is a
+  right single quote), and the README notes that a close tag inside a
+  `<textarea>` in a hidden element ends the hidden section early.
+- The age limit is inclusive and `ageDays` is display-only, so a report can show
+  `90d old` for a claim that is stale under `maxAgeDays: 90`.
+- `generateClaimsReport` and the checks still do not look for duplicate ids,
+  exact or look-alike; only the registry does.
+- The look-alike rule does not cover case, inner spacing, or homoglyph letters
+  from another script. Only the six default placeholders are matched; `TBA`,
+  `pending`, `?`, `...` and dashes such as an em dash still count as present
+  unless you add them.
+
 ## [0.3.1] - 2026-10-07
 
 No change to the library's behavior or API.
@@ -123,7 +219,7 @@ shape and the status rules are unchanged.
   It gets the same fail-safe treatment as any other unparseable value:
   `status: 'stale'` and `ageDays: null`. This matches `freshness-kit`, which
   already requires an explicit zone once there's a time-of-day to be
-  ambiguous about. A bare `'YYYY-MM-DD'` date is unaffected — it has no
+  ambiguous about. A bare `'YYYY-MM-DD'` date is unaffected: it has no
   time-of-day, so it's still read as UTC midnight. If you have callers
   passing zoneless timestamps today, add `Z` (or the correct offset) to each
   one; a bare date is the simpler fix if the time-of-day wasn't meaningful.
@@ -132,7 +228,7 @@ shape and the status rules are unchanged.
   naming the offending claim's index (`claims[2].id must be a non-empty
   string...`), and `createClaimsRegistry().registerClaim` throws the same
   way. `evaluateClaim`, `checkStaleness`, and `checkEvidenceLinked` are
-  unchanged — an idless claim isn't stored or displayed by name there, so it
+  unchanged, because an idless claim isn't stored or displayed by name there, so it
   wasn't silently broken the same way.
 
 ### Fixed
@@ -142,7 +238,7 @@ shape and the status rules are unchanged.
   map embeds the original source. `.d.ts.map` generation is turned off
   instead of shipping `src/`.
 - README line ~234 still called `grounding-kit` "a sibling kit, not yet
-  public" — it's published; now linked directly.
+  public"; it's published; now linked directly.
 - README "Start here" showed the contributor `npm ci` workflow before the
   plain `npm install claims-registry-kit` line a new reader actually wants
   first.
@@ -155,8 +251,8 @@ shape and the status rules are unchanged.
   `require(esm)` (>=20.19.0, >=22.12.0). `scripts/consumer-probe.cjs`, run by
   `verify-package.mjs`, guards it in CI.
 - Documented plainly (README and TSDoc) that an unparseable `verifiedAt`
-  always yields `status: 'stale'` with `ageDays: null` — the fail-safe
-  direction, never guessed at and never `'current'`.
+  always yields `status: 'stale'` with `ageDays: null`, the fail-safe
+  direction: never guessed at and never `'current'`.
 
 ## [0.1.0] - 2026-09-27
 
@@ -177,8 +273,8 @@ First release.
 - A future `verifiedAt` is treated as a likely typo and reported `'stale'`,
   not `'current'`, once it is further ahead than its format can honestly
   explain: a bare `YYYY-MM-DD` date gets up to 14 hours (it may already be
-  "today" in a zone ahead of UTC), while an explicit timestamp — an exact,
-  zoned instant — gets no grace period at all.
+  "today" in a zone ahead of UTC), while an explicit timestamp (an exact,
+  zoned instant) gets no grace period at all.
 - `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked`, and
   `generateClaimsReport` validate their arguments and throw
   `TypeError`/`RangeError` on a malformed `claims` array, `maxAgeDays`, or

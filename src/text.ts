@@ -70,3 +70,99 @@ export function displayValue(value: unknown): string {
       return String(value);
   }
 }
+
+const LOOK_ALIKE_INVISIBLE = /\p{Default_Ignorable_Code_Point}/gu;
+const NON_WHITESPACE_CONTROL = /(?!\p{White_Space})\p{Cc}/gu;
+const WHITESPACE_CHAR = /^\p{White_Space}$/u;
+
+/**
+ * Trim whitespace from both ends with two index scans. A regex such as
+ * `/^\s+|\s+$/g` retries its trailing alternative at every position inside a
+ * long inner run of whitespace, which is quadratic: an id of 40,000 inner
+ * spaces took about 37 seconds. The scans below touch each character at most
+ * once.
+ */
+function trimWhitespace(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && WHITESPACE_CHAR.test(text.charAt(start))) start += 1;
+  while (end > start && WHITESPACE_CHAR.test(text.charAt(end - 1))) end -= 1;
+  return text.slice(start, end);
+}
+
+/**
+ * The form two ids share when they read the same: invisible characters
+ * (`Default_Ignorable_Code_Point` and non-whitespace control characters)
+ * dropped, NFC-normalized, surrounding whitespace trimmed. Case and inner
+ * whitespace are kept, so `Sync` and `sync`, or `a b` and `ab`, stay different.
+ */
+export function lookAlikeKey(id: string): string {
+  return trimWhitespace(
+    id.replace(LOOK_ALIKE_INVISIBLE, '').replace(NON_WHITESPACE_CONTROL, '').normalize('NFC'),
+  );
+}
+
+// Everything that can make two different strings look alike, spelled out so an
+// error message can show the difference: control characters, whitespace other
+// than a plain inner space, invisible characters and combining marks.
+const NEEDS_SPELLING = /[\p{Cc}\p{White_Space}\p{Default_Ignorable_Code_Point}\p{M}]/gu;
+
+/**
+ * Show an id so that spellings differing only in invisible or look-alike
+ * characters can be told apart: such characters become `\uXXXX` (or
+ * `\u{XXXXX}` above U+FFFF). A plain space between visible characters is kept;
+ * a leading or trailing one is spelled out as `\u0020`. One pass over the
+ * string, linear in its length.
+ */
+export function spellOut(id: string): string {
+  return id.replace(NEEDS_SPELLING, (ch, offset: number) => {
+    if (ch === ' ' && offset !== 0 && offset + 1 !== id.length) return ch;
+    const code = (ch.codePointAt(0) as number).toString(16).padStart(4, '0');
+    return code.length > 4 ? `\\u{${code}}` : `\\u${code}`;
+  });
+}
+
+const STRIP_INVISIBLE = /\p{Default_Ignorable_Code_Point}/gu;
+const MATCH_WHITESPACE = /^\p{White_Space}$/u;
+const MATCH_INVISIBLE = /^\p{Default_Ignorable_Code_Point}$/u;
+
+/**
+ * The form two pieces of text share when a reader sees the same words:
+ * NFKC-normalized, optionally lower-cased, invisible characters (zero-width
+ * spaces, soft hyphens, ...) dropped, every run of whitespace turned into one
+ * space, curly and other quote marks turned into `'` and `"`, and dash and
+ * minus variants turned into `-`. Surrounding whitespace is trimmed. One pass
+ * over the string.
+ */
+export function normalizeForMatch(text: string, ignoreCase: boolean): string {
+  // Invisible characters go first: one between a letter and its combining
+  // mark would otherwise stop NFKC from composing them.
+  let source = text.replace(STRIP_INVISIBLE, '').normalize('NFKC');
+  if (ignoreCase) {
+    // toLowerCase turns a capital sigma into a final sigma only at the end of
+    // a word, so the same letters fold differently depending on what follows.
+    // Folding final sigma to the ordinary one makes the result depend only on
+    // the letters themselves. (The other context-dependent lower-casing rules
+    // are locale-specific, and no locale is passed.)
+    source = source.toLowerCase().replace(/\u03c2/g, '\u03c3').normalize('NFKC');
+  }
+  const out: string[] = [];
+  let pendingSpace = false;
+  for (const ch of source) {
+    if (MATCH_WHITESPACE.test(ch)) {
+      pendingSpace = out.length > 0;
+      continue;
+    }
+    if (MATCH_INVISIBLE.test(ch)) continue;
+    if (pendingSpace) {
+      out.push(' ');
+      pendingSpace = false;
+    }
+    const code = ch.codePointAt(0) as number;
+    if ((code >= 0x2018 && code <= 0x201b) || code === 0x2032 || code === 0x02bc) out.push("'");
+    else if ((code >= 0x201c && code <= 0x201f) || code === 0x2033) out.push('"');
+    else if ((code >= 0x2010 && code <= 0x2015) || code === 0x2212 || code === 0x2043 || code === 0xfe58 || code === 0xfe63) out.push('-');
+    else out.push(ch);
+  }
+  return out.join('');
+}
