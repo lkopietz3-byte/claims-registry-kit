@@ -305,10 +305,10 @@ const RAW = new Set(['script', 'style']); // text up to the closing tag, never s
 const INERT = new Set(['template', 'noscript', 'head']); // contents are not shown
 
 const NAMED: Record<string, string> = {
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
-  ndash: '–', mdash: '—', lsquo: '‘', rsquo: '’',
-  ldquo: '“', rdquo: '”', hellip: '…',
-  copy: '©', reg: '®', trade: '™',
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0',
+  ndash: '\u2013', mdash: '\u2014', lsquo: '\u2018', rsquo: '\u2019',
+  ldquo: '\u201c', rdquo: '\u201d', hellip: '\u2026',
+  copy: '\u00a9', reg: '\u00ae', trade: '\u2122',
 };
 
 function decodeEntities(text: string): string {
@@ -316,7 +316,7 @@ function decodeEntities(text: string): string {
     if (dec !== undefined || hex !== undefined) {
       const code = dec !== undefined ? Number(dec) : parseInt(hex as string, 16);
       const bad = code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff);
-      return bad ? '�' : String.fromCodePoint(code);
+      return bad ? '\ufffd' : String.fromCodePoint(code);
     }
     return Object.hasOwn(NAMED, name as string) ? NAMED[name as string] : all; // an unknown name stays as written
   });
