@@ -433,9 +433,12 @@ assertAppearsIn(registry, htmlToText(html), ['uptime', 'refund-window'], { maxAg
 What the recipe does not do: it does not apply CSS (a `class="hidden"` rule, a
 media query or an off-screen position is invisible to it), it does not run
 JavaScript, and it does not model HTML's implied end tags, so an unclosed hidden
-`<p>` or `<li>` hides the rest of its parent. Like a browser, it ignores a
-trailing slash on elements that are not void (`<div hidden/>` opens a hidden
-`div`), so it is for HTML, not for JSX or XML. If the text your visitors see
+`<p>` or `<li>` hides the rest of its parent. It ignores a trailing slash on
+elements that are not void, as a browser does for HTML (`<div hidden/>` opens a
+hidden `div`). That is the safe direction for SVG and MathML too: a hidden
+self-closing `<svg ... />` is read as open and hides the rest of its parent,
+which fails toward `missing`. It is for HTML, not for
+JSX or XML. If the text your visitors see
 depends on CSS or scripts, take it from a rendered page instead (for example a
 browser's `innerText`) and pass that string. For Markdown, render it to HTML
 first, or register the wording as it appears after rendering. For tables, the

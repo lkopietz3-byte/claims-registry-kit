@@ -63,6 +63,9 @@ const rows: Row[] = [
   { name: 'review: an entity in a style attribute is decoded before the check', html: '<div style="display&#58;none">Free for teams</div>', claimText: 'Free for teams', expected: 'missing' },
   { name: 'review: an entity in aria-hidden is decoded before the check', html: '<div aria-hidden="&#116;rue">Free for teams</div>', claimText: 'Free for teams', expected: 'missing' },
   { name: 'review: entity names that are object properties stay as written', html: '<p>&constructor; &toString; &__proto__; &hasOwnProperty;</p>', claimText: '&constructor; &toString; &__proto__; &hasOwnProperty;', expected: 'present' },
+  { name: 'LIMIT: a hidden self-closing svg is read as open and hides the rest of its parent', html: '<div><svg style="display:none" /><p>Free for teams</p></div>', claimText: 'Free for teams', expected: 'missing' },
+  { name: 'review: a hidden element with a slash stays hidden inside foreignObject', html: '<svg><foreignObject><div hidden/>Free for teams</div></foreignObject></svg>', claimText: 'Free for teams', expected: 'missing' },
+  { name: 'review: a slash that ends an unquoted attribute value is not a self-close', html: '<svg style="display:none" data-x=x/>Free for teams</svg>', claimText: 'Free for teams', expected: 'missing' },
   // Limits the README names. These pin what the recipe does NOT do.
   { name: 'LIMIT: a CSS class such as "hidden" is not evaluated', html: '<span class="hidden text-xs">Verify before you rely on it.</span>', claimText: 'Verify before you rely on it', expected: 'present' },
   { name: 'LIMIT: negation is still the same words', html: '<p>We are not SOC 2 compliant</p>', claimText: 'SOC 2 compliant', expected: 'present' },
