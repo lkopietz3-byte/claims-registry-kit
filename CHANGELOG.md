@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - unreleased
+
+### Breaking changes
+
+Each of these can change a verdict or throw where 0.3.1 did not. Re-run your
+report or CI check after upgrading and read the diff.
+
+- **Claims up to 24 hours past `maxAgeDays` are now `'stale'`.** Migration: if
+  a claim now flips at the boundary and you want the old cutoff, pass
+  `maxAgeDays + 1`; otherwise re-verify the claim.
+- **A placeholder `evidenceRef` (`TODO`, `TBD`, `N/A`, `none`, `-`, `see above`)
+  is now `'unverified'`, not `'current'` or `'stale'`.** Migration: replace the
+  placeholder with a real reference, or pass `{ placeholderRefs: false }` to
+  switch the rule off, or your own list to change it.
+- **`registerClaim` throws for an id that only looks like a registered one**
+  (trailing or leading space, invisible character, NFC versus NFD). It used to
+  register a second claim. Migration: clean the id at the source, or catch the
+  error and decide which spelling is right. `getClaim` stays an exact lookup.
+
 ### Added
 
 - **`checkAppearsIn` and `assertAppearsIn`.** Check that published text (a pricing
@@ -63,6 +82,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documented
 
+- **Getting page text from HTML.** The README has a short `htmlToText` recipe
+  (tags become spaces, entities are decoded, scripts, styles, comments and
+  hidden elements are dropped). It is tested here, linear in page size, and not
+  part of the package. The README now says plainly that `checkAppearsIn` matches
+  exact approved wording, not paraphrase, that `present` means the text is in
+  the string you passed (not that a visitor sees it), that numbers match
+  literally (`$25` is not `$25.00`), and that `'current'` is not "approved".
 - The age limit is inclusive and `ageDays` is display-only, so a report can show
   `90d old` for a claim that is stale under `maxAgeDays: 90`.
 - `generateClaimsReport` and the checks still do not look for duplicate ids,
@@ -190,7 +216,7 @@ shape and the status rules are unchanged.
   It gets the same fail-safe treatment as any other unparseable value:
   `status: 'stale'` and `ageDays: null`. This matches `freshness-kit`, which
   already requires an explicit zone once there's a time-of-day to be
-  ambiguous about. A bare `'YYYY-MM-DD'` date is unaffected — it has no
+  ambiguous about. A bare `'YYYY-MM-DD'` date is unaffected: it has no
   time-of-day, so it's still read as UTC midnight. If you have callers
   passing zoneless timestamps today, add `Z` (or the correct offset) to each
   one; a bare date is the simpler fix if the time-of-day wasn't meaningful.
@@ -199,7 +225,7 @@ shape and the status rules are unchanged.
   naming the offending claim's index (`claims[2].id must be a non-empty
   string...`), and `createClaimsRegistry().registerClaim` throws the same
   way. `evaluateClaim`, `checkStaleness`, and `checkEvidenceLinked` are
-  unchanged — an idless claim isn't stored or displayed by name there, so it
+  unchanged, because an idless claim isn't stored or displayed by name there, so it
   wasn't silently broken the same way.
 
 ### Fixed
@@ -209,7 +235,7 @@ shape and the status rules are unchanged.
   map embeds the original source. `.d.ts.map` generation is turned off
   instead of shipping `src/`.
 - README line ~234 still called `grounding-kit` "a sibling kit, not yet
-  public" — it's published; now linked directly.
+  public"; it's published; now linked directly.
 - README "Start here" showed the contributor `npm ci` workflow before the
   plain `npm install claims-registry-kit` line a new reader actually wants
   first.
@@ -222,8 +248,8 @@ shape and the status rules are unchanged.
   `require(esm)` (>=20.19.0, >=22.12.0). `scripts/consumer-probe.cjs`, run by
   `verify-package.mjs`, guards it in CI.
 - Documented plainly (README and TSDoc) that an unparseable `verifiedAt`
-  always yields `status: 'stale'` with `ageDays: null` — the fail-safe
-  direction, never guessed at and never `'current'`.
+  always yields `status: 'stale'` with `ageDays: null`, the fail-safe
+  direction: never guessed at and never `'current'`.
 
 ## [0.1.0] - 2026-09-27
 
@@ -244,8 +270,8 @@ First release.
 - A future `verifiedAt` is treated as a likely typo and reported `'stale'`,
   not `'current'`, once it is further ahead than its format can honestly
   explain: a bare `YYYY-MM-DD` date gets up to 14 hours (it may already be
-  "today" in a zone ahead of UTC), while an explicit timestamp — an exact,
-  zoned instant — gets no grace period at all.
+  "today" in a zone ahead of UTC), while an explicit timestamp (an exact,
+  zoned instant) gets no grace period at all.
 - `evaluateClaim`, `checkStaleness`, `checkEvidenceLinked`, and
   `generateClaimsReport` validate their arguments and throw
   `TypeError`/`RangeError` on a malformed `claims` array, `maxAgeDays`, or
