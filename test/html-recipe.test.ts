@@ -57,6 +57,12 @@ const rows: Row[] = [
   { name: 'a script with a closing-tag look-alike in a string', html: '<script>var a = "</scripts>"; </script><p>Free for teams</p>', claimText: 'Free for teams', expected: 'present' },
   { name: 'an unterminated comment drops the rest', html: '<p>Free</p><!-- Free for teams', claimText: 'Free for teams', expected: 'missing' },
   { name: 'an unterminated tag drops the rest', html: '<p>Free</p><a href="x', claimText: 'Free for teams', expected: 'missing' },
+  { name: 'review: a script closes only at </script>, not at </scripts>', html: '<script>const s = "</scripts>Free for teams";</script>', claimText: 'Free for teams', expected: 'missing' },
+  { name: 'review: a slash on a non-void hidden element is ignored, as in a browser', html: '<div hidden/>Free for teams</div>', claimText: 'Free for teams', expected: 'missing' },
+  { name: 'review: a slash on a script is ignored, as in a browser', html: '<script/>"Free for teams"</script>', claimText: 'Free for teams', expected: 'missing' },
+  { name: 'review: an entity in a style attribute is decoded before the check', html: '<div style="display&#58;none">Free for teams</div>', claimText: 'Free for teams', expected: 'missing' },
+  { name: 'review: an entity in aria-hidden is decoded before the check', html: '<div aria-hidden="&#116;rue">Free for teams</div>', claimText: 'Free for teams', expected: 'missing' },
+  { name: 'review: entity names that are object properties stay as written', html: '<p>&constructor; &toString; &__proto__; &hasOwnProperty;</p>', claimText: '&constructor; &toString; &__proto__; &hasOwnProperty;', expected: 'present' },
   // Limits the README names. These pin what the recipe does NOT do.
   { name: 'LIMIT: a CSS class such as "hidden" is not evaluated', html: '<span class="hidden text-xs">Verify before you rely on it.</span>', claimText: 'Verify before you rely on it', expected: 'present' },
   { name: 'LIMIT: negation is still the same words', html: '<p>We are not SOC 2 compliant</p>', claimText: 'SOC 2 compliant', expected: 'present' },

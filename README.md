@@ -318,7 +318,7 @@ function decodeEntities(text: string): string {
       const bad = code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff);
       return bad ? '�' : String.fromCodePoint(code);
     }
-    return NAMED[name as string] ?? all; // an unknown name stays as written
+    return Object.hasOwn(NAMED, name as string) ? NAMED[name as string] : all; // an unknown name stays as written
   });
 }
 
@@ -360,14 +360,11 @@ export function htmlToText(html: string): string {
     while (j < html.length && !isSpace(html[j]) && html[j] !== '/' && html[j] !== '>') j += 1;
     const name = html.slice(nameStart, j).toLowerCase();
     let hidden = INERT.has(name);
-    let selfClosing = false;
     while (j < html.length && html[j] !== '>') {
       if (isSpace(html[j]) || html[j] === '/') {
-        selfClosing = html[j] === '/';
         j += 1;
         continue;
       }
-      selfClosing = false;
       const attrStart = j;
       while (j < html.length && !isSpace(html[j]) && html[j] !== '=' && html[j] !== '>' && html[j] !== '/') j += 1;
       const attr = html.slice(attrStart, j).toLowerCase();
@@ -389,8 +386,8 @@ export function htmlToText(html: string): string {
         }
       }
       if (attr === 'hidden') hidden = true;
-      else if (attr === 'aria-hidden' && value.trim().toLowerCase() === 'true') hidden = true;
-      else if (attr === 'style' && /display\s*:\s*none|visibility\s*:\s*hidden/i.test(value)) hidden = true;
+      else if (attr === 'aria-hidden' && decodeEntities(value).trim().toLowerCase() === 'true') hidden = true;
+      else if (attr === 'style' && /display\s*:\s*none|visibility\s*:\s*hidden/i.test(decodeEntities(value))) hidden = true;
     }
     i = j + 1; // past the ">" (or past the end of an unterminated tag)
     if (hiddenAt < 0) out.push(' '); // every tag is a break between words
@@ -403,17 +400,19 @@ export function htmlToText(html: string): string {
         }
         if (open.length <= hiddenAt) hiddenAt = -1;
       }
-    } else if (RAW.has(name) && !selfClosing) {
+    } else if (RAW.has(name)) {
       // Skip to the matching close tag. Each "</" is looked at once.
       let k = i;
       for (;;) {
         k = html.indexOf('</', k);
-        if (k === -1 || html.slice(k + 2, k + 2 + name.length).toLowerCase() === name) break;
+        if (k === -1) break;
+        const after = html[k + 2 + name.length] ?? '>';
+        if (html.slice(k + 2, k + 2 + name.length).toLowerCase() === name && (isSpace(after) || after === '/' || after === '>')) break;
         k += 2;
       }
       const end = k === -1 ? -1 : html.indexOf('>', k);
       i = end === -1 ? html.length : end + 1;
-    } else if (!VOID.has(name) && !selfClosing) {
+    } else if (!VOID.has(name)) {
       if (hidden && hiddenAt < 0) hiddenAt = open.length;
       open.push(name);
       openCount.set(name, (openCount.get(name) ?? 0) + 1);
@@ -434,7 +433,9 @@ assertAppearsIn(registry, htmlToText(html), ['uptime', 'refund-window'], { maxAg
 What the recipe does not do: it does not apply CSS (a `class="hidden"` rule, a
 media query or an off-screen position is invisible to it), it does not run
 JavaScript, and it does not model HTML's implied end tags, so an unclosed hidden
-`<p>` or `<li>` hides the rest of its parent. If the text your visitors see
+`<p>` or `<li>` hides the rest of its parent. Like a browser, it ignores a
+trailing slash on elements that are not void (`<div hidden/>` opens a hidden
+`div`), so it is for HTML, not for JSX or XML. If the text your visitors see
 depends on CSS or scripts, take it from a rendered page instead (for example a
 browser's `innerText`) and pass that string. For Markdown, render it to HTML
 first, or register the wording as it appears after rendering. For tables, the
