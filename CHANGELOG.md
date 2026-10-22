@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Renamed the package from `claims-registry-kit` to `@evidencekit/claims` as part of Evidence Kit. The repository moved to `evidencekit/claims`. No behavior change; the exported API is unchanged. Install with `npm install @evidencekit/claims`.
 
-## [0.4.0] - unreleased
+## [0.4.0] - 2026-10-12
 
 ### Breaking changes
 
