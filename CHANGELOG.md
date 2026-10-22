@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-22
+
+### Changed
+
+- Renamed the package from `claims-registry-kit` to `@evidencekit/claims` as part of Evidence Kit. The repository moved to `evidencekit/claims`. No behavior change; the exported API is unchanged. Install with `npm install @evidencekit/claims`.
+
 ## [0.4.0] - unreleased
 
 ### Breaking changes

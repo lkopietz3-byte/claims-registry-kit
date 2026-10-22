@@ -4,7 +4,7 @@
 // because a .cjs extension always forces CommonJS. Run by verify-package.mjs.
 const assert = require('node:assert/strict');
 
-const { evaluateClaim, generateClaimsReport, createClaimsRegistry } = require('claims-registry-kit');
+const { evaluateClaim, generateClaimsReport, createClaimsRegistry } = require('@evidencekit/claims');
 
 const NOW = new Date('2026-08-02T00:00:00.000Z');
 const claim = {

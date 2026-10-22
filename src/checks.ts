@@ -18,8 +18,8 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * a typo. UTC+14:00 (for example Pacific/Kiritimati) is the furthest-ahead
  * civil time zone in the IANA database, so a bare date is already "today"
  * somewhere on Earth up to 14 hours before UTC agrees. This matches
- * freshness-kit's bare-date threshold (see its README's "Input contract and
- * migration" section). The two differ in what happens past it: freshness-kit
+ * @evidencekit/freshness's bare-date threshold (see its README's "Input contract and
+ * migration" section). The two differ in what happens past it: @evidencekit/freshness
  * throws a RangeError, this library reports the claim 'stale'.
  *
  * An explicit timestamp (anything with a time component, offset or not)

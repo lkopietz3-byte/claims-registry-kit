@@ -10,7 +10,7 @@ import {
   evaluateClaim,
   formatClaimsReportAsText,
   generateClaimsReport,
-} from 'claims-registry-kit';
+} from '@evidencekit/claims';
 
 const NOW = new Date('2026-08-02T00:00:00.000Z');
 

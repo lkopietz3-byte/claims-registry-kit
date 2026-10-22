@@ -1,4 +1,4 @@
-// Core types for claims-registry-kit.
+// Core types for @evidencekit/claims.
 //
 // The pattern: every public-facing product claim ("we do X", "our data is
 // Y") is stored as a structured record BESIDE a reference to whatever

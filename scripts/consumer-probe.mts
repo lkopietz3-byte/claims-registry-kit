@@ -17,7 +17,7 @@ import {
   type EvaluatedClaim,
   type EvidenceOptions,
   type IsoDateString,
-} from 'claims-registry-kit';
+} from '@evidencekit/claims';
 
 function assertEqual<T>(actual: T, expected: T, message: string): void {
   if (actual !== expected) {

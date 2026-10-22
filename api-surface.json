@@ -1,5 +1,5 @@
 {
-  "claims-registry-kit": [
+  "@evidencekit/claims": [
     "DEFAULT_PLACEHOLDER_REFS",
     "assertAppearsIn",
     "checkAppearsIn",

@@ -47,7 +47,7 @@ export default defineConfig(
     },
   },
   {
-    // scripts/consumer-probe.mts imports 'claims-registry-kit' by its
+    // scripts/consumer-probe.mts imports '@evidencekit/claims' by its
     // published package name, which only resolves inside the temporary
     // consumer project verify-package.mjs builds — never in this repo's own
     // tsconfig. So it's deliberately outside the `kit/typescript` project

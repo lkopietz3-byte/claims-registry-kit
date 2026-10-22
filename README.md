@@ -1,6 +1,8 @@
 # Claims Registry Kit
 
-**[Try it in your browser →](https://lkopietz3-byte.github.io/honesty-kits/#claims-registry-kit)** · Part of [honesty kits](https://github.com/lkopietz3-byte/honesty-kits), a family of small checks for the claims an AI product makes.
+**[Try it in your browser →](https://evidencekit.github.io/#claims)** · Part of [Evidence Kit](https://github.com/evidencekit), checks that tie AI output and public claims back to their evidence.
+
+Formerly published as `claims-registry-kit`.
 
 Claims Registry Kit is a small, dependency-free TypeScript library for
 tracking public-facing claims alongside an evidence reference and a
@@ -17,7 +19,7 @@ true, it does not read paraphrases, and it does not fetch or render pages.
 ## Start here
 
 ```bash
-npm install claims-registry-kit
+npm install @evidencekit/claims
 ```
 
 Working on this repo instead? Clone it, then:
@@ -76,7 +78,7 @@ needs to decide whether the evidence supports the words being published.
 ## Use it in a project
 
 ```bash
-npm install claims-registry-kit
+npm install @evidencekit/claims
 ```
 
 Zero runtime dependencies. Ships TypeScript declarations. Or build from
@@ -87,8 +89,8 @@ load it. `require()` also works where Node can `require(esm)`:
 
 | How you load it | Node 20.19+ | Node 22.12+ | Node 24 and 26 | Older Node 20 or 22 |
 | --- | --- | --- | --- | --- |
-| `import { evaluateClaim } from 'claims-registry-kit'` | works | works | works | works |
-| `require('claims-registry-kit')` | works | works | works | fails (no `require(esm)`); use `import()` |
+| `import { evaluateClaim } from '@evidencekit/claims'` | works | works | works | works |
+| `require('@evidencekit/claims')` | works | works | works | fails (no `require(esm)`); use `import()` |
 
 Recommended runtimes are Node 22 and 24 (LTS) and Node 26 (current). Node 20 is
 end-of-life. CI still runs the tests and the installed-package probes on Node
@@ -108,7 +110,7 @@ import {
   checkStaleness,
   generateClaimsReport,
   formatClaimsReportAsText,
-} from 'claims-registry-kit';
+} from '@evidencekit/claims';
 
 // Pin the clock so this example prints the same thing on any day. In real use,
 // leave `now` out and the current time is used.
@@ -174,7 +176,7 @@ shallow: if `evidenceRef` is an array or an object, the registry and you still
 share that inner value (see [Honest limits](#honest-limits)).
 
 ```ts
-import { createClaimsRegistry, generateClaimsReport } from 'claims-registry-kit';
+import { createClaimsRegistry, generateClaimsReport } from '@evidencekit/claims';
 
 const registry = createClaimsRegistry();
 registry.registerClaim(claims[0]);
@@ -187,7 +189,7 @@ const report = generateClaimsReport(registry.getClaims(), 90, NOW);
 
 ```ts
 // scripts/check-claims.ts
-import { generateClaimsReport, formatClaimsReportAsText } from 'claims-registry-kit';
+import { generateClaimsReport, formatClaimsReportAsText } from '@evidencekit/claims';
 import { claims } from '../src/config/productClaims.js'; // wherever yours live
 
 const report = generateClaimsReport(claims, 90);
@@ -213,7 +215,7 @@ current wording of these registered claims? Use it on a pricing or disclosure
 page so the copy cannot drift from the registry.
 
 ```ts
-import { assertAppearsIn, checkAppearsIn } from 'claims-registry-kit';
+import { assertAppearsIn, checkAppearsIn } from '@evidencekit/claims';
 
 // In a test or CI step: throws an Error that lists every claim that is not shown.
 assertAppearsIn(registry, pricingPageText, ['uptime', 'refund-window'], { maxAgeDays: 90 });
@@ -429,7 +431,7 @@ export function htmlToText(html: string): string {
 ```
 
 ```ts
-import { assertAppearsIn } from 'claims-registry-kit';
+import { assertAppearsIn } from '@evidencekit/claims';
 import { htmlToText } from './html-to-text.js';
 
 const html = await (await fetch('https://example.com/pricing')).text();
@@ -588,7 +590,7 @@ characters).
   timestamp that carries an explicit `Z` or `+HH:mm`/`-HH:mm` offset. **A
   timestamp with a time-of-day but no zone, like `'2026-01-01T12:00:00'`, is
   NOT read as UTC**, it's treated exactly like any other unparseable value:
-  `status: 'stale'` and `ageDays: null`. `freshness-kit` has the same zone
+  `status: 'stale'` and `ageDays: null`. `@evidencekit/freshness` has the same zone
   requirement but throws a `RangeError` there, where this library reports
   `'stale'`.
   Guessing UTC for a zoneless timestamp would give the same string a
@@ -605,10 +607,10 @@ characters).
   of UTC (UTC+14, e.g. Pacific/Kiritimati, is the furthest-ahead civil zone).
   An explicit timestamp names an exact, zoned instant and gets none of that
   slack: even one millisecond past `now` reads `'stale'`, not `'current'`.
-  `freshness-kit` uses the same two thresholds (14 hours for a bare date, none
+  `@evidencekit/freshness` uses the same two thresholds (14 hours for a bare date, none
   for a timestamp) but throws a `RangeError` past them instead of reporting
   `'stale'`. This library's date grammar is also a little looser than
-  `freshness-kit`'s: it accepts a space instead of `T`, lowercase `t` and `z`,
+  `@evidencekit/freshness`'s: it accepts a space instead of `T`, lowercase `t` and `z`,
   a timestamp without seconds, an offset such as `+01` or `+0100`, and up to
   nine fractional digits.
 - **Placeholder references are no evidence, by default.** An `evidenceRef`
@@ -677,12 +679,12 @@ characters).
 
 ## Relationship to sibling kits
 
-- [`freshness-kit`](https://github.com/lkopietz3-byte/freshness-kit) turns a
+- [`@evidencekit/freshness`](https://github.com/evidencekit/freshness) turns a
   review date into a graduated `fresh` / `aging` / `stale` signal and rejects
   a bad or future date with a `RangeError`. This library uses the same date
   rules for time zones and future dates but has one cutoff and reports a bad
   date as `'stale'` instead of throwing (see Honest limits).
-- [`grounding-kit`](https://github.com/lkopietz3-byte/grounding-kit) checks
+- [`@evidencekit/citations`](https://github.com/evidencekit/citations) checks
   that sentences of AI-generated text carry citation markers that point into an
   evidence map you supply. It is not a verifier for the claims tracked here:
   its own README says its built-in support check is lexical word overlap,

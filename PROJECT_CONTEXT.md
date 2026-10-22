@@ -1,18 +1,18 @@
-# Project context: claims-registry-kit
+# Project context: @evidencekit/claims
 
 Mapped on **2026-09-26** from connected GitHub, Vercel, and Supabase metadata. This file is a navigation aid; verify current code and service settings before acting.
 
 ## Identity and repository settings
 
-- Repository: [lkopietz3-byte/claims-registry-kit](https://github.com/lkopietz3-byte/claims-registry-kit)
+- Repository: [evidencekit/claims](https://github.com/evidencekit/claims)
 - Purpose: A small library that checks whether each public claim has an evidence reference and a review date within a policy you set, and flags claims with no reference or an overdue review. It can also check that a page's text still contains a claim's exact wording. It checks structure, not truth: it never opens the evidence or judges whether it supports the claim, and it does not store or schedule anything.
 - GitHub visibility: **public**; default branch: **`main`**; archived: **no**.
 - Product stage, owner, production health, and GitHub protection/settings beyond the fields above: **not verified**.
 
 ## Starting points
 
-- Purpose source: [README.md](https://github.com/lkopietz3-byte/claims-registry-kit/blob/main/README.md)
-- [package.json](https://github.com/lkopietz3-byte/claims-registry-kit/blob/main/package.json) contains scripts and declared dependencies; check the current file before using commands.
+- Purpose source: [README.md](https://github.com/evidencekit/claims/blob/main/README.md)
+- [package.json](https://github.com/evidencekit/claims/blob/main/package.json) contains scripts and declared dependencies; check the current file before using commands.
 
 ## Service map
 

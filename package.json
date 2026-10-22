@@ -1,7 +1,7 @@
 {
-  "name": "claims-registry-kit",
-  "version": "0.4.0",
-  "description": "A dependency-free TypeScript library for tracking public claims, their evidence references, and their review freshness.",
+  "name": "@evidencekit/claims",
+  "version": "0.4.1",
+  "description": "Evidence Kit claims registry: a dependency-free TypeScript library for tracking public claims, their evidence references, and their review freshness.",
   "keywords": [
     "product-claims",
     "marketing-claims",
@@ -11,17 +11,22 @@
     "compliance",
     "ci",
     "honesty",
-    "honesty-kits"
+    "evidence-kit",
+    "claims-registry-kit"
   ],
   "author": "Lucas Kopietz",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lkopietz3-byte/claims-registry-kit.git"
+    "url": "git+https://github.com/evidencekit/claims.git"
   },
-  "homepage": "https://lkopietz3-byte.github.io/honesty-kits/#claims-registry-kit",
+  "homepage": "https://github.com/evidencekit/claims#readme",
   "bugs": {
-    "url": "https://github.com/lkopietz3-byte/claims-registry-kit/issues"
+    "url": "https://github.com/evidencekit/claims/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "type": "module",
   "main": "./dist/index.js",

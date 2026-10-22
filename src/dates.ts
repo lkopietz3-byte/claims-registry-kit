@@ -11,9 +11,9 @@
 // Accepted:  YYYY-MM-DD                          (UTC midnight)
 //            YYYY-MM-DD[T or space]HH:mm[:ss[.f{1,9}]][Z | +HH[[:]mm] | -HH[[:]mm]]
 // A bare date has no time-of-day, so it is read as UTC midnight -- that's an
-// unambiguous, defensible reading, and freshness-kit does the same for a
+// unambiguous, defensible reading, and @evidencekit/freshness does the same for a
 // bare date. A timestamp WITH a time-of-day but no zone is unparseable
-// (returns null), consistent with freshness-kit, which also requires an
+// (returns null), consistent with @evidencekit/freshness, which also requires an
 // explicit zone once there is a time-of-day to be ambiguous about: "noon,
 // no zone" could mean anything from a ~14-hour-wide band of actual instants
 // depending on the caller's local time zone, and silently guessing UTC gave

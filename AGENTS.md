@@ -1,4 +1,4 @@
-# claims-registry-kit, agent instructions
+# @evidencekit/claims, agent instructions
 
 A dependency-free TypeScript library for tracking public claims, their evidence references, and their review freshness.
 

@@ -48,7 +48,7 @@ describe('a verifiedAt in the future', () => {
 describe('future-date tolerance depends on whether verifiedAt is a bare date or an explicit timestamp', () => {
   // A bare YYYY-MM-DD carries no zone, so it is already "today" somewhere on
   // Earth up to 14 hours before UTC agrees (UTC+14, e.g. Pacific/Kiritimati,
-  // is the furthest-ahead civil zone) — the same rule freshness-kit uses for
+  // is the furthest-ahead civil zone) — the same rule @evidencekit/freshness uses for
   // its own bare-date reviewedOn values. An explicit timestamp names an exact
   // instant and gets none of that slack.
 
