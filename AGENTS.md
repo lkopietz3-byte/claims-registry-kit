@@ -4,7 +4,6 @@ A dependency-free TypeScript library for tracking public claims, their evidence 
 
 ## Read first
 - `ENGINEERING.md` holds this package's invariants and design rules; read it before changing behavior.
-- `PROJECT_CONTEXT.md` is the current project state and decisions.
 - `SECURITY.md` covers the security posture; follow it for anything touching input handling.
 
 ## Commands (from package.json)
@@ -23,10 +22,6 @@ A dependency-free TypeScript library for tracking public claims, their evidence 
 - Do not run `npm publish` or push tags without explicit permission. Treat any claim that a version is published as Reported until the registry confirms it.
 - Runtime `dependencies` stay empty; add dev tooling only.
 - Keep unrelated uncommitted work intact; never stage or reset the whole tree.
-
-## Review preparation
-
-See [docs/REVIEW_READINESS.md](docs/REVIEW_READINESS.md) for review cadence, declared verification gates and the next consumer integration task.
 
 ## Code Review Rules
 

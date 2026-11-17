@@ -468,7 +468,7 @@ describe('review round: nested claims scale linearly', () => {
   });
 });
 
-describe('round 3: page edges and boundary kinds', () => {
+describe('page edges and boundary kinds', () => {
   // Claim edge kinds: digit-edged, letter-edged, punctuation-edged.
   const claimsByKind: Record<string, string> = { digit: '20', letter: 'ab', punct: '%' };
   // What can sit just before or after the claim ('' means the page edge).
@@ -502,7 +502,7 @@ describe('round 3: page edges and boundary kinds', () => {
   });
 });
 
-describe('round 3: options are read once without depending on enumerability', () => {
+describe('options are read once without depending on enumerability', () => {
   const registry = registryWith(claim({ id: 'a', text: 'Alpha', evidenceRef: 'pending' }));
 
   it('a non-enumerable now is honored', () => {
@@ -528,7 +528,7 @@ describe('round 3: options are read once without depending on enumerability', ()
   });
 });
 
-describe('round 3: numeric nesting scales linearly', () => {
+describe('numeric nesting scales linearly', () => {
   for (const sep of [',', '.', ' ', ', ']) {
     it(`600 nested claims "1${sep}1${sep}1..." against a long page (separator ${JSON.stringify(sep)})`, () => {
       const registry = createClaimsRegistry();
@@ -546,11 +546,11 @@ describe('round 3: numeric nesting scales linearly', () => {
   }
 });
 
-describe('round 4: Greek sigma is context-independent', () => {
+describe('Greek sigma is context-independent', () => {
   const ic = { ignoreCase: true };
   const rows: [string, string, string, Record<string, unknown>, AppearsInVerdict][] = [
-    ['Codex case, ignoreCase', 'ΟΣ.A', 'ΟΣ', ic, 'present'],
-    ['Codex case, case-sensitive', 'ΟΣ.A', 'ΟΣ', {}, 'present'],
+    ['sigma before a dot, ignoreCase', 'ΟΣ.A', 'ΟΣ', ic, 'present'],
+    ['sigma before a dot, case-sensitive', 'ΟΣ.A', 'ΟΣ', {}, 'present'],
     ['final sigma at the end of the page, ignoreCase', 'λόγος ΟΣ', 'ΟΣ', ic, 'present'],
     ['final sigma at the end of the page, case-sensitive', 'λόγος ΟΣ', 'ΟΣ', {}, 'present'],
     ['lowercase final sigma claim vs capital page, ignoreCase', 'ΛΌΓΟΣ', 'λόγος', ic, 'present'],
