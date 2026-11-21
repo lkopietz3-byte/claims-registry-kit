@@ -29,7 +29,7 @@ npm run typecheck
 npm run build
 ```
 
-The package is MIT licensed. The [test suite](test/) is the shortest path
+The package is MIT licensed. The [test suite](https://github.com/lkopietz3-byte/claims-registry-kit/tree/main/test) is the shortest path
 through every status and edge case.
 
 ## When to use this, and when not to
@@ -456,8 +456,8 @@ recipe puts a space between cells, so `SOC 2` | `Compliant` reads as
 ## API reference
 
 Every export, briefly. Full behavior and edge cases are in each function's
-TSDoc in [`src/checks.ts`](src/checks.ts), [`src/registry.ts`](src/registry.ts),
-and [`src/types.ts`](src/types.ts), read those for the exact rules; this is
+TSDoc in [`src/checks.ts`](https://github.com/lkopietz3-byte/claims-registry-kit/blob/main/src/checks.ts), [`src/registry.ts`](https://github.com/lkopietz3-byte/claims-registry-kit/blob/main/src/registry.ts),
+and [`src/types.ts`](https://github.com/lkopietz3-byte/claims-registry-kit/blob/main/src/types.ts), read those for the exact rules; this is
 a map, not the whole story.
 
 ### Types
@@ -555,14 +555,14 @@ characters).
   days, for display only: a claim 90 days and 23 hours old shows
   `ageDays: 90` and is `'stale'` under `maxAgeDays: 90`, so a report can print
   `90d old` under a `maxAgeDays: 90` heading. A bare `YYYY-MM-DD` counts from
-  UTC midnight, so it goes stale at the start of day `maxAgeDays` + 1 UTC, not
-  at the end of it. Earlier versions compared the rounded-down day count, which
+  UTC midnight and stays current at exactly `maxAgeDays` days old. It goes
+  stale one millisecond later. Earlier versions compared the rounded-down day count, which
   let a claim stay `'current'` for up to 24 hours past the limit.
 - **This checks that a claim HAS a linked evidence reference, and whether
   that check is stale. It does NOT verify the evidence still actually
-  proves the claim.** `checkEvidenceLinked` is a structural presence check:
-  is `evidenceRef` non-blank (or, for a list, does at least one of its
-  entries qualify), and it never opens the file, fetches the URL, or runs the
+  proves the claim.** `checkEvidenceLinked` is a check for a usable reference.
+  By default, at least one `evidenceRef` entry must contain text and cannot
+  be a placeholder such as `TODO`. The check never opens the file, fetches the URL, or runs the
   test named in `evidenceRef`. Blank means only whitespace, control characters
   and `Default_Ignorable_Code_Point` characters (zero-width spaces and joiners,
   bidi controls such as U+061C and U+2066–2069, variation selectors, Hangul
